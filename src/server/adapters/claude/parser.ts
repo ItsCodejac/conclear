@@ -1,4 +1,4 @@
-import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType } from '../types.js';
+import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileVersion, FileHistory } from '../types.js';
 import { readFile, stat } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
@@ -19,6 +19,22 @@ interface JsonlLine {
   toolUseResult?: Record<string, unknown>;
   customTitle?: string;
   sessionId?: string;
+  cwd?: string;
+  gitBranch?: string;
+}
+
+/** Branches that don't add useful context as a preview prefix */
+const GENERIC_BRANCHES = new Set(['main', 'master', 'HEAD', 'develop', 'dev', 'staging', 'production', 'prod']);
+
+/** Test whether a user message is "substantive" — a real instruction, not a path/UUID/command */
+function isSubstantiveMessage(text: string): boolean {
+  if (text.length <= 10) return false;
+  if (!text.includes(' ')) return false;                           // single-word commands
+  if (/^[\/~.]/.test(text)) return false;                         // file paths
+  if (/^https?:\/\//.test(text)) return false;                    // URLs
+  if (/^[0-9a-f]{8,}[-]?/i.test(text) && !/\s/.test(text.slice(0, 40))) return false; // hex/UUID
+  if (!/^[a-zA-Z]/.test(text)) return false;                      // must start with a letter
+  return true;
 }
 
 function findBase64Blobs(obj: unknown, path: string, results: Array<{ path: string; size: number; mediaType: string }>): void {

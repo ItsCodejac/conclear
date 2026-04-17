@@ -368,7 +368,12 @@ function ProjectGroupRows({
                 <td>
                   <SizeIndicator totalBytes={s.totalSizeBytes} imageBytes={s.imageSizeBytes} />
                 </td>
-                <td className={imgClass}>{s.imageCount}</td>
+                <td className={imgClass}>
+                  {s.imageCount}
+                  {isSelected && (
+                    <span className={styles.expandHint} title="Double-click to expand">&#x21F1;</span>
+                  )}
+                </td>
               </tr>
             </CtxMenu.Trigger>
             <CtxMenu.Content>

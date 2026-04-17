@@ -67,6 +67,21 @@ export interface TimelineEvent {
   durationMs?: number;   // for timed operations
 }
 
+export interface FileVersion {
+  filePath: string;
+  timestamp?: string;
+  operation: 'read' | 'edit' | 'write';
+  contentPreview: string; // first 200 chars
+  lineCount: number;
+  sizeBytes: number;
+  lineNumber: number; // line in JSONL for retrieval
+}
+
+export interface FileHistory {
+  filePath: string;
+  versions: FileVersion[];
+}
+
 export interface Adapter {
   name: string;
   detect(): Promise<boolean>;

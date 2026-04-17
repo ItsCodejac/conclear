@@ -424,7 +424,7 @@ export function App() {
                 className={detailTab === 'chat' ? styles.tabActive : styles.tab}
                 onClick={() => setDetailTab('chat')}
               >
-                Chat
+                Chat ({detail.messageCount})
               </button>
             </div>
             {detailTab === 'images' && (
@@ -480,7 +480,7 @@ export function App() {
                     className={detailTab === 'chat' ? styles.tabActive : styles.tab}
                     onClick={() => setDetailTab('chat')}
                   >
-                    Chat
+                    Chat ({detail.messageCount})
                   </button>
                 </div>
                 {detailTab === 'images' && (
