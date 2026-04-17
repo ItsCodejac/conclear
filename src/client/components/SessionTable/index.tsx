@@ -147,6 +147,12 @@ export function SessionTable({ sessions, loading, error, selectedId, onSelect, o
     [filtered, sortField, sortDir],
   );
 
+  const showToolColumn = useMemo(() => {
+    if (sessions.length === 0) return true;
+    const firstTool = sessions[0].tool;
+    return !sessions.every(s => s.tool === firstTool);
+  }, [sessions]);
+
   const flatList = useMemo(
     () => buildFlatList(groups, collapsed),
     [groups, collapsed],
@@ -248,7 +254,7 @@ export function SessionTable({ sessions, loading, error, selectedId, onSelect, o
             <tr>
               <th onClick={() => handleSort('name')}>Name{arrow('name')}</th>
               <th onClick={() => handleSort('project')}>Project{arrow('project')}</th>
-              <th onClick={() => handleSort('tool')}>Tool{arrow('tool')}</th>
+              {showToolColumn && <th onClick={() => handleSort('tool')}>Tool{arrow('tool')}</th>}
               <th onClick={() => handleSort('lastActiveAt')}>Last Active{arrow('lastActiveAt')}</th>
               <th onClick={() => handleSort('totalSizeBytes')}>Size{arrow('totalSizeBytes')}</th>
               <th onClick={() => handleSort('imageCount')}>Img{arrow('imageCount')}</th>
@@ -273,6 +279,7 @@ export function SessionTable({ sessions, loading, error, selectedId, onSelect, o
                   onToggle={() => toggleGroup(g.project)}
                   onStripAll={onStripAll}
                   onResizeAll={onResizeAll}
+                  showToolColumn={showToolColumn}
                 />
               );
             })}
@@ -295,6 +302,7 @@ interface ProjectGroupRowsProps {
   onToggle: () => void;
   onStripAll?: (sessionId: string) => void;
   onResizeAll?: (sessionId: string, targetBytes: number) => void;
+  showToolColumn: boolean;
 }
 
 function ProjectGroupRows({
@@ -309,11 +317,13 @@ function ProjectGroupRows({
   onToggle,
   onStripAll,
   onResizeAll,
+  showToolColumn,
 }: ProjectGroupRowsProps) {
+  const colCount = showToolColumn ? 6 : 5;
   return (
     <>
       <tr className={styles.groupHeader} onClick={onToggle}>
-        <td colSpan={6} className={styles.groupHeaderCell}>
+        <td colSpan={colCount} className={styles.groupHeaderCell}>
           <span className={styles.groupToggle}>{isCollapsed ? '\u25b8' : '\u25be'}</span>
           <span className={styles.groupName}>{group.displayName}</span>
           <span className={styles.groupStats}>
@@ -353,7 +363,7 @@ function ProjectGroupRows({
               >
                 <td className={styles.nameCell}><SessionNameCell session={s} /></td>
                 <td className={styles.projectCell}>{decodeProjectName(s.project)}</td>
-                <td className={styles.toolCell}>{s.tool}</td>
+                {showToolColumn && <td className={styles.toolCell}>{s.tool}</td>}
                 <td>{formatDate(s.lastActiveAt)}</td>
                 <td>
                   <SizeIndicator totalBytes={s.totalSizeBytes} imageBytes={s.imageSizeBytes} />

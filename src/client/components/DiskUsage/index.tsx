@@ -132,8 +132,8 @@ export function DiskUsage({ sessions, onSelect }: DiskUsageProps) {
               onClick={() => onSelect(s.id)}
             >
               <span className={styles.offenderRank}>{i + 1}</span>
-              <span className={styles.offenderName} title={s.name ?? s.id}>
-                {s.name ?? s.id}
+              <span className={styles.offenderName} title={s.name ?? s.preview ?? s.id}>
+                {s.name ?? s.preview ?? s.id}
               </span>
               <span className={styles.offenderSize}>{formatBytes(s.imageSizeBytes)}</span>
               <span className={styles.offenderImages}>{s.imageCount} img</span>

@@ -242,9 +242,13 @@ export function ImagePreview({ detail, loading, onStrip, onRecover, onResize, st
               </span>
             </label>
           </li>
-          {detail.images.map(img => {
+          {detail.images.map((img, idx) => {
             const isStripped = strippedIds.has(img.id);
             const isSelected = selectedIds.has(img.id);
+            const prevContext = idx > 0 ? detail.images[idx - 1].context : null;
+            const isDuplicateContext = prevContext !== null && img.context === prevContext;
+            // Extract just the timestamp portion (e.g. "7:48 AM") from context like "7:48 AM — some text..."
+            const timestampOnly = img.context?.match(/^[\d]+:[\d]+\s*[AP]M/i)?.[0];
             return (
               <CtxMenu.Root key={img.id}>
                 <CtxMenu.Trigger asChild>
@@ -264,7 +268,9 @@ export function ImagePreview({ detail, loading, onStrip, onRecover, onResize, st
                       stripped={isStripped}
                     />
                     <div className={styles.imageMeta}>
-                      <span className={styles.imageContext}>{img.context}</span>
+                      <span className={isDuplicateContext ? styles.imageContextDim : styles.imageContext}>
+                        {isDuplicateContext ? (timestampOnly ?? 'same context') : img.context}
+                      </span>
                       <span className={isStripped ? styles.imageSizeStripped : styles.imageSize}>
                         {formatBytes(img.sizeBytes)}
                       </span>

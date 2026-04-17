@@ -150,7 +150,7 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
             }
           }
           // Strip system XML tags before using as preview
-          text = text.replace(/<(?:system-reminder|local-command-caveat|command-name|command-message|command-args|antml:[a-z_]+|env|functions|function)[^>]*>[\s\S]*?<\/(?:system-reminder|local-command-caveat|command-name|command-message|command-args|antml:[a-z_]+|env|functions|function)>/gi, '');
+          text = text.replace(/<(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)[^>]*>[\s\S]*?<\/(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)>/gi, '');
           text = text.trim().replace(/\s+/g, ' ');
           if (text.length > 0) {
             preview = text.length > 60 ? text.slice(0, 57) + '...' : text;
@@ -237,6 +237,8 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
               }
             }
           }
+          // Strip system XML tags (task-notification, system-reminder, etc.) before using as context
+          text = text.replace(/<(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)[^>]*>[\s\S]*?<\/(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)>/gi, '');
           text = text.trim().replace(/\s+/g, ' ');
           if (text.length > 0) {
             lastUserText = text;

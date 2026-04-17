@@ -103,6 +103,12 @@
   color: #71717a;
 }
 
+.imageContextDim {
+  composes: imageContext;
+  color: #3f3f46;
+  font-style: italic;
+}
+
 .imageSize {
   font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
   font-size: 11px;
