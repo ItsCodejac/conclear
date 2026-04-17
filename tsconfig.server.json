@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": false,
+    "jsx": "preserve"
+  },
+  "include": ["src/server/**/*", "src/cli.ts"]
+}

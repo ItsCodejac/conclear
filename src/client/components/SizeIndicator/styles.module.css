@@ -1,0 +1,22 @@
+.indicator {
+  display: inline-block;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.clean {
+  composes: indicator;
+  color: #22c55e;
+}
+
+.review {
+  composes: indicator;
+  color: #f59e0b;
+}
+
+.bloated {
+  composes: indicator;
+  color: #ef4444;
+  font-weight: 600;
+}

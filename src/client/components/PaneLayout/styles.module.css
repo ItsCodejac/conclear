@@ -1,0 +1,29 @@
+.layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.left {
+  flex: 1;
+  min-width: 300px;
+  overflow: auto;
+}
+
+.divider {
+  width: 4px;
+  flex-shrink: 0;
+  background: #2e2e32;
+  cursor: col-resize;
+  transition: background 0.1s;
+}
+
+.divider:hover {
+  background: #52525b;
+}
+
+.right {
+  flex-shrink: 0;
+  overflow: auto;
+  background: #141416;
+}

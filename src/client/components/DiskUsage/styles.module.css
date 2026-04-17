@@ -1,0 +1,182 @@
+.container {
+  padding: 16px 20px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.heading {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #71717a;
+  margin: 0 0 8px 0;
+}
+
+.totalSize {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 28px;
+  font-weight: 700;
+  color: #e4e4e7;
+  margin: 0 0 4px 0;
+}
+
+.totalSub {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #71717a;
+  margin: 0 0 20px 0;
+}
+
+.section {
+  margin-bottom: 20px;
+}
+
+/* Bar chart rows */
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.barLabel {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  color: #a1a1aa;
+  width: 140px;
+  min-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  flex: 1;
+  height: 16px;
+  background: #141416;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  background: #3f3f46;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.barMeta {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #71717a;
+  width: 120px;
+  min-width: 120px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Two-segment bar */
+.segmentBar {
+  display: flex;
+  height: 20px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.segmentImage {
+  background: #f59e0b;
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.segmentOther {
+  background: #3f3f46;
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.segmentLegend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.legendLabel {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #a1a1aa;
+}
+
+.legendValue {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  color: #71717a;
+}
+
+/* Top offenders list */
+.offenderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #2e2e32;
+  cursor: pointer;
+}
+
+.offenderRow:hover {
+  background: #1e1e22;
+}
+
+.offenderRow:last-child {
+  border-bottom: none;
+}
+
+.offenderRank {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #52525b;
+  width: 16px;
+  text-align: right;
+}
+
+.offenderName {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  color: #a1a1aa;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offenderSize {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #f59e0b;
+  text-align: right;
+  min-width: 70px;
+}
+
+.offenderImages {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #52525b;
+  text-align: right;
+  min-width: 50px;
+}

@@ -1,0 +1,85 @@
+.content {
+  background: #1e1e22;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
+  padding: 4px 0;
+  min-width: 160px;
+  z-index: 1100;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  color: #a1a1aa;
+  cursor: default;
+  outline: none;
+  user-select: none;
+}
+
+.item[data-highlighted] {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+.itemDanger {
+  composes: item;
+  color: #ef4444;
+}
+
+.itemDanger[data-highlighted] {
+  background: #27272a;
+  color: #ef4444;
+}
+
+.separator {
+  height: 1px;
+  background: #3f3f46;
+  margin: 4px 0;
+}
+
+.subTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  color: #a1a1aa;
+  cursor: default;
+  outline: none;
+  user-select: none;
+}
+
+.subTrigger[data-highlighted] {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+.subArrow {
+  margin-left: 12px;
+  color: #52525b;
+  font-size: 11px;
+}
+
+.subContent {
+  background: #1e1e22;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
+  padding: 4px 0;
+  min-width: 100px;
+  z-index: 1100;
+}
+
+.label {
+  padding: 4px 12px 2px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #52525b;
+  user-select: none;
+}

@@ -1,0 +1,43 @@
+{
+  "name": "conclear",
+  "description": "Visual utility for cleaning AI coding assistant session data",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "conclear": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts & vite dev",
+    "build": "vite build && npm run build:server",
+    "build:server": "tsc --project tsconfig.server.json --outDir dist",
+    "start": "node dist/cli.js",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@radix-ui/react-context-menu": "^2.2.6",
+    "@radix-ui/react-scroll-area": "^1.2.3",
+    "@radix-ui/react-separator": "^1.1.2",
+    "@radix-ui/react-tooltip": "^1.1.8",
+    "express": "^5.1.0",
+    "open": "^10.1.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/sharp": "^0.31.1",
+    "@vitejs/plugin-react": "^4.4.1",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.2"
+  }
+}

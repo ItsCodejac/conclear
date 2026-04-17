@@ -1,0 +1,48 @@
+.container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: 8px 14px;
+  border: 1px solid #2e2e32;
+  background: #141416;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+  max-width: 360px;
+  animation: slideIn 0.15s ease-out;
+}
+
+.toast.success {
+  border-left: 3px solid #22c55e;
+  color: #22c55e;
+}
+
+.toast.error {
+  border-left: 3px solid #ef4444;
+  color: #ef4444;
+}
+
+.toast.info {
+  border-left: 3px solid #71717a;
+  color: #a1a1aa;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

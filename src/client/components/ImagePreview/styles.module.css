@@ -1,0 +1,395 @@
+.panel {
+  padding: 12px 16px;
+  font-size: 12px;
+}
+
+.heading {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #71717a;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.reclaimable {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  color: #f59e0b;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.statLabel {
+  color: #52525b;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #27272a;
+  margin: 10px 0;
+}
+
+.imageList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.imageItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #27272a;
+}
+
+.thumbContainer {
+  flex-shrink: 0;
+}
+
+.thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border: 1px solid #3f3f46;
+  cursor: pointer;
+  display: block;
+  background: #27272a;
+}
+
+.thumb:hover {
+  border-color: #71717a;
+}
+
+.thumbExpanded {
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  border: 1px solid #3f3f46;
+  cursor: pointer;
+  display: block;
+  background: #27272a;
+}
+
+.imageMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.imageContext {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #71717a;
+}
+
+.imageSize {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #f59e0b;
+}
+
+.actionGroup {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: flex-start;
+}
+
+.stripBtn {
+  margin-top: 0;
+  padding: 2px 6px;
+  border: 1px solid #7f1d1d;
+  background: none;
+  color: #ef4444;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stripBtn:hover {
+  background: #2a1215;
+}
+
+.noImages {
+  color: #22c55e;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  padding: 8px 0;
+}
+
+/* Stripped state */
+
+.placeholder {
+  width: 48px;
+  height: 48px;
+  border: 1px dashed #3f3f46;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1e1e22;
+  flex-shrink: 0;
+}
+
+.placeholderLabel {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: #22c55e;
+  letter-spacing: 0.05em;
+}
+
+.placeholderSize {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 7px;
+  color: #22c55e;
+}
+
+.imageItemStripped {
+  composes: imageItem;
+  opacity: 0.5;
+}
+
+.imageSizeStripped {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #22c55e;
+  text-decoration: line-through;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.strippedBanner {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #22c55e;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border: 1px solid #14532d;
+  background: #0a1f0e;
+}
+
+.recoverBtn {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border: 1px solid #14532d;
+  background: none;
+  color: #22c55e;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.recoverBtn:hover {
+  background: #122015;
+}
+
+.stripBtn:disabled,
+.recoverBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.loading {
+  color: #52525b;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 16px 0;
+}
+
+/* Lightbox */
+
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightboxContent {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.lightboxImage {
+  max-width: 90vw;
+  max-height: 75vh;
+  object-fit: contain;
+  border: 1px solid #3f3f46;
+}
+
+.lightboxMeta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.lightboxContext {
+  color: #a1a1aa;
+}
+
+.lightboxSize {
+  color: #f59e0b;
+}
+
+.lightboxTimestamp {
+  color: #52525b;
+}
+
+.lightboxStrip {
+  padding: 4px 12px;
+  border: 1px solid #7f1d1d;
+  background: none;
+  color: #ef4444;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.lightboxStrip:hover {
+  background: #2a1215;
+}
+
+.lightboxClose {
+  position: absolute;
+  top: -36px;
+  right: 0;
+  padding: 4px 10px;
+  border: 1px solid #3f3f46;
+  background: #27272a;
+  color: #71717a;
+  font-size: 10px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  cursor: pointer;
+}
+
+.lightboxClose:hover {
+  color: #e4e4e7;
+}
+
+/* Multi-select */
+
+.checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+  position: relative;
+}
+
+.checkbox:checked {
+  background: #a1a1aa;
+  border-color: #a1a1aa;
+}
+
+.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid #1e1e22;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox:hover {
+  border-color: #71717a;
+}
+
+.selectAllRow {
+  display: flex;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #27272a;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.selectAllText {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  user-select: none;
+}
+
+.selectionToolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border: 1px solid #3f3f46;
+  background: #1e1e22;
+}
+
+.selectionCount {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+  margin-right: 4px;
+}
+
+.selectionClear {
+  padding: 2px 6px;
+  border: 1px solid #3f3f46;
+  background: none;
+  color: #71717a;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.selectionClear:hover {
+  color: #e4e4e7;
+  background: #27272a;
+}

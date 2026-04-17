@@ -1,0 +1,149 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel {
+  background: #1a1a1e;
+  border: 1px solid #2e2e32;
+  width: 700px;
+  max-width: 90vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #2e2e32;
+  background: #141416;
+}
+
+.title {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #a1a1aa;
+}
+
+.summary {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #71717a;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.closeBtn {
+  padding: 3px 8px;
+  border: 1px solid #3f3f46;
+  background: #27272a;
+  color: #71717a;
+  font-size: 10px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  color: #e4e4e7;
+}
+
+.deleteAllBtn {
+  padding: 3px 8px;
+  border: 1px solid #7f1d1d;
+  background: none;
+  color: #ef4444;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.deleteAllBtn:hover {
+  background: #2a1215;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: auto;
+  flex: 1;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: #1e1e22;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #71717a;
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2e2e32;
+}
+
+.row:hover {
+  background: #27272a;
+}
+
+.table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #27272a;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.nameCell {
+  max-width: 350px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sizeCell {
+  color: #f59e0b;
+  white-space: nowrap;
+}
+
+.timeCell {
+  color: #71717a;
+  white-space: nowrap;
+}
+
+.deleteBtn {
+  padding: 2px 6px;
+  border: 1px solid #7f1d1d;
+  background: none;
+  color: #ef4444;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.deleteBtn:hover {
+  background: #2a1215;
+}
+
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: #52525b;
+  font-family: monospace;
+  font-size: 12px;
+}

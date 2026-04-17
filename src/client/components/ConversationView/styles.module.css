@@ -1,0 +1,204 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2e2e32;
+  background: #141416;
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
+  padding: 4px 8px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+  outline: none;
+}
+
+.searchInput::placeholder { color: #52525b; }
+.searchInput:focus { border-color: #52525b; color: #e4e4e7; }
+
+.roleFilters {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.roleFilterBtn {
+  padding: 2px 6px;
+  border: 1px solid #27272a;
+  background: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  color: #3f3f46;
+  cursor: pointer;
+}
+
+.roleFilterBtn:hover { color: #71717a; border-color: #3f3f46; }
+
+.roleFilterActive {
+  composes: roleFilterBtn;
+  color: #a1a1aa;
+  border-color: #3f3f46;
+  background: #27272a;
+}
+
+.count {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #52525b;
+  white-space: nowrap;
+}
+
+.messages {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.userMsg {
+  padding: 8px 12px;
+  border-left: 2px solid #52525b;
+  margin: 0;
+}
+
+.assistantMsg {
+  padding: 8px 12px;
+  border-left: 2px solid #27272a;
+  margin: 0;
+  background: #1a1a1e;
+}
+
+.userMsg + .userMsg,
+.assistantMsg + .assistantMsg {
+  border-top: 1px solid #1e1e22;
+}
+
+.userMsg + .assistantMsg,
+.assistantMsg + .userMsg {
+  border-top: 1px solid #2e2e32;
+}
+
+.msgHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.roleUser {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #e4e4e7;
+}
+
+.roleAssistant {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #71717a;
+}
+
+.timestamp {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #3f3f46;
+}
+
+.imageTag {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 9px;
+  padding: 1px 4px;
+  border: 1px solid #78350f;
+  color: #f59e0b;
+  cursor: pointer;
+}
+
+.imageTag:hover { background: #1a1710; }
+
+.toolUse {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #52525b;
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  border: 1px solid #27272a;
+  background: #141416;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msgText {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  color: #a1a1aa;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  user-select: text;
+  cursor: text;
+}
+
+.msgTextCollapsed {
+  composes: msgText;
+  max-height: 120px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+}
+
+.msgTextCollapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  background: linear-gradient(transparent, #1a1a1e);
+  pointer-events: none;
+}
+
+.userMsg .msgTextCollapsed::after {
+  background: linear-gradient(transparent, #1a1a1e);
+}
+
+.expandBtn {
+  border: none;
+  background: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  color: #52525b;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.expandBtn:hover { color: #a1a1aa; }
+
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: #52525b;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.loading {
+  composes: empty;
+}
