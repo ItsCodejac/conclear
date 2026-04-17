@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { TimelineEvent, TimelineEventType } from '../../types';
+import { formatTime } from '../../utils';
 import styles from './styles.module.css';
 
 interface TimelineViewProps {
@@ -25,8 +26,7 @@ const TYPE_FILTERS: TimelineEventType[] = [
 
 function timeStr(ts?: string): string {
   if (!ts) return '     ';
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return formatTime(ts);
 }
 
 function durationStr(ms?: number): string {

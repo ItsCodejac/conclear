@@ -1,3 +1,45 @@
+// ---------------------------------------------------------------------------
+// Time formatting utilities
+// ---------------------------------------------------------------------------
+
+/** Pad a number to 2 digits */
+function pad2(n: number): string {
+  return n < 10 ? '0' + n : String(n);
+}
+
+/** Format a timestamp as 24h time: "15:08:30" */
+export function formatTime(ts: string | number): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+/** Format a timestamp as short date + 24h time: "Apr 17, 15:08" */
+export function formatDateTime(ts: string | number): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  return `${month} ${d.getDate()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** Format a timestamp as relative time: "3m ago", "4d ago" */
+export function formatRelative(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ---------------------------------------------------------------------------
+// Project name decoding
+// ---------------------------------------------------------------------------
+
 /**
  * Decode an encoded Claude project path into a human-readable project name.
  *

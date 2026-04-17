@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SizeIndicator } from '../SizeIndicator';
 import * as CtxMenu from '../ContextMenu';
-import { decodeProjectName } from '../../utils';
+import { decodeProjectName, formatRelative } from '../../utils';
 import type { Session, SortField, SortDirection } from '../../types';
 import styles from './styles.module.css';
 
@@ -369,6 +369,12 @@ function ProjectGroupRows({
                   <SizeIndicator totalBytes={s.totalSizeBytes} imageBytes={s.imageSizeBytes} />
                 </td>
                 <td className={imgClass}>
+                  {s.hasOversizedImages && (
+                    <span
+                      className={styles.oversizedWarn}
+                      title={`Contains oversized images (>${s.maxImageDimension}px) \u2014 may trigger dimension limit warning`}
+                    >&#x26A0;</span>
+                  )}
                   {s.imageCount}
                   {isSelected && (
                     <span className={styles.expandHint} title="Double-click to expand">&#x21F1;</span>

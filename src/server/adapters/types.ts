@@ -11,6 +11,8 @@ export interface Session {
   totalSizeBytes: number;
   imageSizeBytes: number;
   filePath: string;
+  hasOversizedImages: boolean;
+  maxImageDimension: number;
 }
 
 export interface SessionImage {

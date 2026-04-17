@@ -37,7 +37,15 @@ function isSubstantiveMessage(text: string): boolean {
   return true;
 }
 
-function findBase64Blobs(obj: unknown, path: string, results: Array<{ path: string; size: number; mediaType: string }>): void {
+interface Base64Blob {
+  path: string;
+  size: number;
+  mediaType: string;
+  /** First ~1000 chars of base64 data for dimension sniffing (only populated when collectHeaders is true) */
+  headerData?: string;
+}
+
+function findBase64Blobs(obj: unknown, path: string, results: Base64Blob[], collectHeaders = false): void {
   if (obj === null || obj === undefined) return;
 
   if (typeof obj === 'object' && !Array.isArray(obj)) {
@@ -47,33 +55,64 @@ function findBase64Blobs(obj: unknown, path: string, results: Array<{ path: stri
     if (record.type === 'image' && typeof record.source === 'object' && record.source !== null) {
       const source = record.source as Record<string, unknown>;
       if (source.type === 'base64' && typeof source.data === 'string' && source.data.length > 200) {
-        results.push({
+        const blob: Base64Blob = {
           path: `${path}.source.data`,
           size: Math.ceil(source.data.length * 0.75),
           mediaType: (source.media_type as string) || 'image/png',
-        });
+        };
+        if (collectHeaders) blob.headerData = (source.data as string).slice(0, 1000);
+        results.push(blob);
         return;
       }
     }
 
     // Pattern 2: base64 key directly (toolUseResult.file.base64)
     if (typeof record.base64 === 'string' && record.base64.length > 200) {
-      results.push({
+      const blob: Base64Blob = {
         path: `${path}.base64`,
         size: Math.ceil(record.base64.length * 0.75),
         mediaType: 'image/png',
-      });
+      };
+      if (collectHeaders) blob.headerData = (record.base64 as string).slice(0, 1000);
+      results.push(blob);
     }
 
     for (const [key, value] of Object.entries(record)) {
       if (key === 'base64') continue; // already handled
-      findBase64Blobs(value, `${path}.${key}`, results);
+      findBase64Blobs(value, `${path}.${key}`, results, collectHeaders);
     }
   } else if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
-      findBase64Blobs(obj[i], `${path}[${i}]`, results);
+      findBase64Blobs(obj[i], `${path}[${i}]`, results, collectHeaders);
     }
   }
+}
+
+/** Read image dimensions from a base64 header snippet without decoding the full image. */
+async function getImageDimensionsFromHeader(headerData: string): Promise<{ width: number; height: number } | null> {
+  try {
+    const buf = Buffer.from(headerData, 'base64');
+
+    // PNG: width at bytes 16-19, height at bytes 20-23 (big-endian uint32)
+    // Check PNG magic: 0x89504E47
+    if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+      const width = buf.readUInt32BE(16);
+      const height = buf.readUInt32BE(20);
+      if (width > 0 && width < 100000 && height > 0 && height < 100000) {
+        return { width, height };
+      }
+    }
+
+    // JPEG or other formats: use sharp metadata on the header bytes
+    // sharp can read dimensions from just the header
+    const meta = await sharp(buf).metadata();
+    if (meta.width && meta.height) {
+      return { width: meta.width, height: meta.height };
+    }
+  } catch {
+    // header too small or not a valid image — skip
+  }
+  return null;
 }
 
 function replaceBase64Blobs(obj: unknown): number {
@@ -131,6 +170,7 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
     let cwd: string | null = null;
     let firstTimestamp: number | null = null;
     let lastTimestamp: number | null = null;
+    const imageHeaders: string[] = []; // base64 header snippets for dimension checking
 
     for await (const line of rl) {
       if (!line.trim()) continue;
@@ -202,10 +242,13 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
         }
 
         if (hasImage) {
-          const blobs: Array<{ path: string; size: number; mediaType: string }> = [];
-          findBase64Blobs(parsed, '', blobs);
+          const blobs: Base64Blob[] = [];
+          findBase64Blobs(parsed, '', blobs, true);
           imageCount += blobs.length;
           imageSizeBytes += blobs.reduce((sum, b) => sum + b.size, 0);
+          for (const b of blobs) {
+            if (b.headerData) imageHeaders.push(b.headerData);
+          }
         }
       } catch {
         // skip unparseable lines
@@ -234,6 +277,20 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
       }
     }
 
+    // Check image dimensions only when session has 2+ images (the trigger condition)
+    let maxImageDimension = 0;
+    if (imageCount >= 2 && imageHeaders.length > 0) {
+      const dimResults = await Promise.all(
+        imageHeaders.map(h => getImageDimensionsFromHeader(h))
+      );
+      for (const dims of dimResults) {
+        if (dims) {
+          maxImageDimension = Math.max(maxImageDimension, dims.width, dims.height);
+        }
+      }
+    }
+    const hasOversizedImages = imageCount >= 2 && maxImageDimension > 2000;
+
     return {
       id: basename(filePath, '.jsonl'),
       name: sessionName,
@@ -247,6 +304,8 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
       totalSizeBytes: stats.size,
       imageSizeBytes,
       filePath,
+      hasOversizedImages,
+      maxImageDimension,
     };
   } catch {
     return null;
@@ -268,6 +327,7 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
     let firstTimestamp: number | null = null;
     let lastTimestamp: number | null = null;
     const images: SessionImage[] = [];
+    const imageHeaders: string[] = [];
     let toolResultSizeBytes = 0;
 
     // Track the most recent user message text for image context
@@ -329,18 +389,22 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
         }
 
         // Find images with context
-        const blobs: Array<{ path: string; size: number; mediaType: string }> = [];
-        findBase64Blobs(parsed, '', blobs);
+        const blobs: Base64Blob[] = [];
+        findBase64Blobs(parsed, '', blobs, true);
 
         for (const blob of blobs) {
-          // Build a rich context label: "3:08 PM -- fix the auth middleware..."
+          if (blob.headerData) imageHeaders.push(blob.headerData);
+
+          // Build a rich context label: "15:08 -- fix the auth middleware..."
           let context = '';
 
-          // Format timestamp as time label
+          // Format timestamp as 24h time label
           if (parsed.timestamp) {
             const d = new Date(parsed.timestamp);
             if (!isNaN(d.getTime())) {
-              context = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+              const hh = String(d.getHours()).padStart(2, '0');
+              const mm = String(d.getMinutes()).padStart(2, '0');
+              context = `${hh}:${mm}`;
             }
           }
 
@@ -394,6 +458,20 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
       }
     }
 
+    // Check image dimensions only when session has 2+ images
+    let maxImageDimension = 0;
+    if (images.length >= 2 && imageHeaders.length > 0) {
+      const dimResults = await Promise.all(
+        imageHeaders.map(h => getImageDimensionsFromHeader(h))
+      );
+      for (const dims of dimResults) {
+        if (dims) {
+          maxImageDimension = Math.max(maxImageDimension, dims.width, dims.height);
+        }
+      }
+    }
+    const hasOversizedImages = images.length >= 2 && maxImageDimension > 2000;
+
     return {
       id: basename(filePath, '.jsonl'),
       name: sessionName,
@@ -407,6 +485,8 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
       totalSizeBytes: stats.size,
       imageSizeBytes,
       filePath,
+      hasOversizedImages,
+      maxImageDimension,
       images,
       toolResultSizeBytes,
     };

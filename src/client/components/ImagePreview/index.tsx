@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { SessionDetail, SessionImage } from '../../types';
+import { formatDateTime } from '../../utils';
 import { ResizeMenu } from '../ResizeMenu';
 import * as CtxMenu from '../ContextMenu';
 import styles from './styles.module.css';
@@ -52,7 +53,7 @@ function Lightbox({ src, image, onClose, onStrip }: {
           <span className={styles.lightboxSize}>{formatBytes(image.sizeBytes)}</span>
           {image.timestamp && (
             <span className={styles.lightboxTimestamp}>
-              {new Date(image.timestamp).toLocaleString()}
+              {formatDateTime(image.timestamp)}
             </span>
           )}
           <button className={styles.lightboxStrip} onClick={onStrip}>
@@ -247,8 +248,8 @@ export function ImagePreview({ detail, loading, onStrip, onRecover, onResize, st
             const isSelected = selectedIds.has(img.id);
             const prevContext = idx > 0 ? detail.images[idx - 1].context : null;
             const isDuplicateContext = prevContext !== null && img.context === prevContext;
-            // Extract just the timestamp portion (e.g. "7:48 AM") from context like "7:48 AM — some text..."
-            const timestampOnly = img.context?.match(/^[\d]+:[\d]+\s*[AP]M/i)?.[0];
+            // Extract just the timestamp portion (e.g. "15:08") from context like "15:08 — some text..."
+            const timestampOnly = img.context?.match(/^\d{2}:\d{2}/)?.[0];
             return (
               <CtxMenu.Root key={img.id}>
                 <CtxMenu.Trigger asChild>

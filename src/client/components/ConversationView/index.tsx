@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ChatMessage } from '../../types';
+import { formatTime } from '../../utils';
 import styles from './styles.module.css';
 
 interface ConversationViewProps {
@@ -9,8 +10,7 @@ interface ConversationViewProps {
 
 function timeStr(ts?: string): string {
   if (!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatTime(ts);
 }
 
 function MessageBubble({ msg, onImageClick }: { msg: ChatMessage; onImageClick?: (id: string) => void }) {

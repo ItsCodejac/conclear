@@ -129,6 +129,31 @@
   color: #71717a;
 }
 
+/* Problem sessions */
+.problemDesc {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  color: #71717a;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.problemIcon {
+  color: #f59e0b;
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.problemDim {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #f59e0b;
+  text-align: right;
+  min-width: 60px;
+}
+
 /* Top offenders list */
 .offenderRow {
   display: flex;

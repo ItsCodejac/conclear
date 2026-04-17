@@ -153,6 +153,14 @@
   font-weight: 600;
 }
 
+/* Oversized image warning */
+.oversizedWarn {
+  color: #f59e0b;
+  font-size: 11px;
+  margin-right: 4px;
+  cursor: help;
+}
+
 /* Expand hint on selected rows */
 .expandHint {
   margin-left: 8px;

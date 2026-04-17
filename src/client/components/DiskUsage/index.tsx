@@ -55,6 +55,14 @@ export function DiskUsage({ sessions, onSelect }: DiskUsageProps) {
 
   const maxProjectSize = projectStats.length > 0 ? projectStats[0].totalSize : 1;
 
+  const problemSessions = useMemo(
+    () =>
+      sessions
+        .filter((s) => s.hasOversizedImages)
+        .sort((a, b) => b.maxImageDimension - a.maxImageDimension),
+    [sessions],
+  );
+
   const topOffenders = useMemo(
     () =>
       [...sessions]
@@ -120,6 +128,30 @@ export function DiskUsage({ sessions, onSelect }: DiskUsageProps) {
           </span>
         </div>
       </div>
+
+      {/* Problem sessions — oversized images that trigger dimension warnings */}
+      {problemSessions.length > 0 && (
+        <div className={styles.section}>
+          <h3 className={styles.heading}>Problem Sessions (Oversized Images)</h3>
+          <p className={styles.problemDesc}>
+            These sessions have multiple images with dimensions &gt;2000px, which may trigger Claude Code&apos;s image dimension limit warning.
+          </p>
+          {problemSessions.map((s) => (
+            <div
+              key={s.id}
+              className={styles.offenderRow}
+              onClick={() => onSelect(s.id)}
+            >
+              <span className={styles.problemIcon}>&#x26A0;</span>
+              <span className={styles.offenderName} title={s.name ?? s.preview ?? s.id}>
+                {s.name ?? s.preview ?? s.id}
+              </span>
+              <span className={styles.problemDim}>{s.maxImageDimension}px</span>
+              <span className={styles.offenderImages}>{s.imageCount} img</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Top offenders */}
       {topOffenders.length > 0 && (
