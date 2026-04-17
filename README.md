@@ -29,28 +29,23 @@ npx conclear
 
 **A visual session browser** that scans all your AI tool data and shows you exactly what's taking space.
 
-<!-- Screenshot: landing page with session list and disk usage overview -->
-<!-- docs/screenshots/landing.png -->
+![Session browser with disk usage overview](docs/screenshots/demo-images.png)
 
 **Image preview and cleanup** — see every screenshot stored in a session. Strip them (replace with a tiny placeholder), resize them (shrink to a target file size), or leave them alone. Your choice, per-image or in bulk.
 
-<!-- Screenshot: image panel with thumbnails and strip/resize buttons -->
-<!-- docs/screenshots/images.png -->
+**File version history** — every file your AI tool read, edited, or wrote is tracked with full content. Browse versions, view with syntax highlighting, compare diffs, copy code.
 
-**File version history** — every file your AI tool read, edited, or wrote is tracked with full content. Browse versions, view with syntax highlighting, compare diffs, copy code. This is your safety net when git isn't enough.
+![File versions with syntax highlighting](docs/screenshots/demo-files.png)
 
-<!-- Screenshot: files tab with syntax-highlighted code viewer -->
-<!-- docs/screenshots/files.png -->
+![Code viewer with syntax highlighting](docs/screenshots/demo-codeviewer.png)
 
 **Conversation replay** — read through past sessions with clean formatting. Search for specific discussions. Filter by user or assistant messages. Export as markdown.
 
-<!-- Screenshot: chat view with conversation -->
-<!-- docs/screenshots/chat.png -->
+![Chat view in full panel mode](docs/screenshots/demo-fullpanel-chat.png)
 
 **Timeline** — event log of everything that happened: edits, bash commands, file reads, errors. Filter by type, search by content.
 
-<!-- Screenshot: timeline view with event types -->
-<!-- docs/screenshots/timeline.png -->
+![Timeline event log](docs/screenshots/demo-timeline.png)
 
 ## Supported tools
 
