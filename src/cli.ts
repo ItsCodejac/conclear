@@ -16,6 +16,7 @@
  */
 
 const QUERY_COMMANDS = new Set(['search', 'files', 'sessions', 'summary', 'context', 'export']);
+const META_COMMANDS = new Set(['mcp']);
 
 function printHelp(): void {
   process.stdout.write(`ConClear - AI session explorer
@@ -39,6 +40,9 @@ QUERY COMMANDS (no server needed):
   conclear export <session-name-or-id> [--output <file>] [--format md|txt]
     Export session as a clean markdown document
 
+MCP SERVER:
+  conclear mcp           Start the MCP server (stdio transport, for AI agents)
+
 UI LAUNCHER:
   conclear            Start the web UI
   conclear --ui       Start the web UI
@@ -58,6 +62,16 @@ async function main(): Promise<void> {
   }
 
   const command = args[0]?.toLowerCase();
+
+  // MCP server — start and block
+  if (command && META_COMMANDS.has(command)) {
+    if (command === 'mcp') {
+      const { startMcpServer } = await import('./mcp-server.js');
+      await startMcpServer();
+      // Server runs until process is killed; don't fall through
+      return;
+    }
+  }
 
   // Query commands — import handler module, run directly (no server)
   if (command && QUERY_COMMANDS.has(command)) {
