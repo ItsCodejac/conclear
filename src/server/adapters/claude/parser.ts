@@ -125,7 +125,10 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
     let imageCount = 0;
     let imageSizeBytes = 0;
     let sessionName: string | null = null;
-    let preview: string | null = null;
+    let firstSubstantivePreview: string | null = null;
+    let firstAnyPreview: string | null = null;
+    let gitBranch: string | null = null;
+    let cwd: string | null = null;
     let firstTimestamp: number | null = null;
     let lastTimestamp: number | null = null;
 
@@ -137,8 +140,10 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
       const hasMessage = line.includes('"user"') || line.includes('"assistant"');
       const hasImage = line.includes('base64');
       const hasTimestamp = line.includes('timestamp');
+      const hasBranch = line.includes('gitBranch');
+      const hasCwd = line.includes('"cwd"');
 
-      if (!hasTitle && !hasMessage && !hasImage && !hasTimestamp) continue;
+      if (!hasTitle && !hasMessage && !hasImage && !hasTimestamp && !hasBranch && !hasCwd) continue;
 
       try {
         const parsed: JsonlLine = JSON.parse(line);
@@ -151,8 +156,16 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
           messageCount++;
         }
 
-        // Extract first user message text as preview
-        if (preview === null && parsed.type === 'user' && parsed.message?.content) {
+        // Extract gitBranch and cwd from the first line that has them
+        if (gitBranch === null && hasBranch && parsed.gitBranch) {
+          gitBranch = parsed.gitBranch;
+        }
+        if (cwd === null && hasCwd && parsed.cwd) {
+          cwd = parsed.cwd;
+        }
+
+        // Extract user message text candidates for preview (keep scanning until we find a substantive one)
+        if (firstSubstantivePreview === null && parsed.type === 'user' && parsed.message?.content) {
           const content = parsed.message.content;
           let text = '';
           if (typeof content === 'string') {
@@ -169,7 +182,14 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
           text = text.replace(/<(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)[^>]*>[\s\S]*?<\/(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)>/gi, '');
           text = text.trim().replace(/\s+/g, ' ');
           if (text.length > 0) {
-            preview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+            // Keep the very first message as a last-resort fallback
+            if (firstAnyPreview === null) {
+              firstAnyPreview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+            }
+            // Prefer a substantive message (real instruction, not a path/UUID/single-word)
+            if (isSubstantiveMessage(text)) {
+              firstSubstantivePreview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+            }
           }
         }
 
@@ -189,6 +209,28 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
         }
       } catch {
         // skip unparseable lines
+      }
+    }
+
+    // Build preview with fallback chain:
+    // 1. Resume name (sessionName) — handled separately as `name`
+    // 2. Substantive user message, optionally prefixed with descriptive git branch
+    // 3. Any first user message (even paths/UUIDs), optionally prefixed with branch
+    // 4. Working directory basename
+    let preview: string | null = firstSubstantivePreview ?? firstAnyPreview;
+
+    // Prefix with git branch if it's descriptive (not main/master/etc.)
+    if (preview && gitBranch && !GENERIC_BRANCHES.has(gitBranch)) {
+      const branchPrefix = gitBranch.length > 30 ? gitBranch.slice(0, 27) + '...' : gitBranch;
+      const combined = `${branchPrefix}: ${preview}`;
+      preview = combined.length > 60 ? combined.slice(0, 57) + '...' : combined;
+    }
+
+    // If still no preview, fall back to the working directory basename
+    if (!preview && cwd) {
+      const dirName = basename(cwd);
+      if (dirName && dirName !== '/' && dirName !== '~') {
+        preview = dirName;
       }
     }
 
@@ -219,7 +261,10 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
 
     let messageCount = 0;
     let sessionName: string | null = null;
-    let preview: string | null = null;
+    let firstSubstantivePreview: string | null = null;
+    let firstAnyPreview: string | null = null;
+    let gitBranch: string | null = null;
+    let cwd: string | null = null;
     let firstTimestamp: number | null = null;
     let lastTimestamp: number | null = null;
     const images: SessionImage[] = [];
@@ -240,6 +285,14 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
           messageCount++;
         }
 
+        // Extract gitBranch and cwd from the first line that has them
+        if (gitBranch === null && parsed.gitBranch) {
+          gitBranch = parsed.gitBranch;
+        }
+        if (cwd === null && parsed.cwd) {
+          cwd = parsed.cwd;
+        }
+
         // Extract user message text for preview and image context
         if (parsed.type === 'user' && parsed.message?.content) {
           const content = parsed.message.content;
@@ -258,8 +311,11 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
           text = text.trim().replace(/\s+/g, ' ');
           if (text.length > 0) {
             lastUserText = text;
-            if (preview === null) {
-              preview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+            if (firstAnyPreview === null) {
+              firstAnyPreview = text.length > 60 ? text.slice(0, 57) + '...' : text;
+            }
+            if (firstSubstantivePreview === null && isSubstantiveMessage(text)) {
+              firstSubstantivePreview = text.length > 60 ? text.slice(0, 57) + '...' : text;
             }
           }
         }
@@ -321,6 +377,22 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
     }
 
     const imageSizeBytes = images.reduce((sum, img) => sum + img.sizeBytes, 0);
+
+    // Build preview with fallback chain (same as parseSessionFile)
+    let preview: string | null = firstSubstantivePreview ?? firstAnyPreview;
+
+    if (preview && gitBranch && !GENERIC_BRANCHES.has(gitBranch)) {
+      const branchPrefix = gitBranch.length > 30 ? gitBranch.slice(0, 27) + '...' : gitBranch;
+      const combined = `${branchPrefix}: ${preview}`;
+      preview = combined.length > 60 ? combined.slice(0, 57) + '...' : combined;
+    }
+
+    if (!preview && cwd) {
+      const dirName = basename(cwd);
+      if (dirName && dirName !== '/' && dirName !== '~') {
+        preview = dirName;
+      }
+    }
 
     return {
       id: basename(filePath, '.jsonl'),
@@ -910,4 +982,279 @@ export async function parseConversation(filePath: string): Promise<ParsedConvers
   }
 
   return { messages, timeline };
+}
+
+/**
+ * Extract file version history from a JSONL session file.
+ * Scans assistant tool_use blocks (for operation type & file path) and
+ * user tool_result blocks (for file content) as well as top-level toolUseResult entries.
+ */
+export async function parseFileHistory(filePath: string): Promise<FileHistory[]> {
+  const fileVersions = new Map<string, FileVersion[]>();
+
+  const rl = createInterface({
+    input: createReadStream(filePath, { encoding: 'utf-8' }),
+    crlfDelay: Infinity,
+  });
+
+  // Track pending tool_use calls by tool_use_id so we can match them to results
+  const pendingTools = new Map<string, { operation: 'read' | 'edit' | 'write'; filePath: string; timestamp?: string }>();
+
+  let lineIdx = 0;
+  for await (const line of rl) {
+    if (!line.trim()) { lineIdx++; continue; }
+
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const type = parsed.type as string;
+      const timestamp = parsed.timestamp as string | undefined;
+
+      // Assistant messages: extract tool_use blocks to learn operation + file path
+      if (type === 'assistant') {
+        const message = parsed.message as Record<string, unknown> | undefined;
+        if (message && Array.isArray(message.content)) {
+          for (const block of message.content) {
+            if (typeof block !== 'object' || block === null) continue;
+            const b = block as Record<string, unknown>;
+            if (b.type !== 'tool_use') continue;
+
+            const toolName = (b.name as string || '').toLowerCase();
+            const input = (b.input as Record<string, unknown>) || {};
+            const toolUseId = b.id as string;
+
+            if ((toolName === 'read' || toolName === 'edit' || toolName === 'write') && input.file_path) {
+              const fp = input.file_path as string;
+              const op = toolName as 'read' | 'edit' | 'write';
+
+              if (toolUseId) {
+                pendingTools.set(toolUseId, { operation: op, filePath: fp, timestamp });
+              }
+
+              // For Edit tool, we can extract content from old_string/new_string
+              if (op === 'edit' && (input.old_string || input.new_string)) {
+                const editContent = `--- old ---\n${input.old_string || ''}\n--- new ---\n${input.new_string || ''}`;
+                const contentBytes = Buffer.byteLength(editContent, 'utf-8');
+                const lines = editContent.split('\n').length;
+                const version: FileVersion = {
+                  filePath: fp,
+                  timestamp,
+                  operation: 'edit',
+                  contentPreview: editContent.slice(0, 200),
+                  lineCount: lines,
+                  sizeBytes: contentBytes,
+                  lineNumber: lineIdx,
+                };
+                if (!fileVersions.has(fp)) fileVersions.set(fp, []);
+                fileVersions.get(fp)!.push(version);
+              }
+
+              // For Write tool, the content is in input.content
+              if (op === 'write' && typeof input.content === 'string') {
+                const writeContent = input.content;
+                const contentBytes = Buffer.byteLength(writeContent, 'utf-8');
+                const lines = writeContent.split('\n').length;
+                const version: FileVersion = {
+                  filePath: fp,
+                  timestamp,
+                  operation: 'write',
+                  contentPreview: writeContent.slice(0, 200),
+                  lineCount: lines,
+                  sizeBytes: contentBytes,
+                  lineNumber: lineIdx,
+                };
+                if (!fileVersions.has(fp)) fileVersions.set(fp, []);
+                fileVersions.get(fp)!.push(version);
+              }
+            }
+          }
+        }
+      }
+
+      // User messages: contain tool_result blocks with file content
+      if (type === 'user') {
+        const message = parsed.message as Record<string, unknown> | undefined;
+        if (message && Array.isArray(message.content)) {
+          for (const block of message.content) {
+            if (typeof block !== 'object' || block === null) continue;
+            const b = block as Record<string, unknown>;
+            if (b.type !== 'tool_result') continue;
+
+            const toolUseId = b.tool_use_id as string;
+            const pending = toolUseId ? pendingTools.get(toolUseId) : undefined;
+
+            // Extract text content from the tool result
+            let resultText = '';
+            if (typeof b.content === 'string') {
+              resultText = b.content;
+            } else if (Array.isArray(b.content)) {
+              for (const c of b.content) {
+                if (typeof c === 'object' && c !== null && (c as Record<string, unknown>).type === 'text') {
+                  resultText += (resultText ? '\n' : '') + ((c as Record<string, unknown>).text as string || '');
+                }
+              }
+            }
+
+            if (pending && pending.operation === 'read' && resultText.length > 0) {
+              // Read result: the content is the file content (often with line numbers)
+              const contentBytes = Buffer.byteLength(resultText, 'utf-8');
+              const lines = resultText.split('\n').length;
+              const version: FileVersion = {
+                filePath: pending.filePath,
+                timestamp: timestamp || pending.timestamp,
+                operation: 'read',
+                contentPreview: resultText.slice(0, 200),
+                lineCount: lines,
+                sizeBytes: contentBytes,
+                lineNumber: lineIdx,
+              };
+              if (!fileVersions.has(pending.filePath)) fileVersions.set(pending.filePath, []);
+              fileVersions.get(pending.filePath)!.push(version);
+            }
+
+            if (pending) {
+              pendingTools.delete(toolUseId);
+            }
+          }
+        }
+      }
+
+      // Top-level toolUseResult entries (some JSONL formats use this pattern)
+      if (parsed.toolUseResult && typeof parsed.toolUseResult === 'object') {
+        const tr = parsed.toolUseResult as Record<string, unknown>;
+        const fp = tr.filePath as string;
+        if (fp) {
+          let content = '';
+          let operation: 'read' | 'edit' | 'write' = 'read';
+
+          if (typeof tr.content === 'string') {
+            content = tr.content;
+          }
+          if (tr.originalFile && typeof tr.originalFile === 'string') {
+            content = tr.originalFile;
+            operation = 'edit';
+          }
+          if (tr.newString || tr.oldString) {
+            operation = 'edit';
+            if (!content) {
+              content = `--- old ---\n${tr.oldString || ''}\n--- new ---\n${tr.newString || ''}`;
+            }
+          }
+
+          if (content.length > 0) {
+            const contentBytes = Buffer.byteLength(content, 'utf-8');
+            const lines = content.split('\n').length;
+            const version: FileVersion = {
+              filePath: fp,
+              timestamp,
+              operation,
+              contentPreview: content.slice(0, 200),
+              lineCount: lines,
+              sizeBytes: contentBytes,
+              lineNumber: lineIdx,
+            };
+            if (!fileVersions.has(fp)) fileVersions.set(fp, []);
+            fileVersions.get(fp)!.push(version);
+          }
+        }
+      }
+    } catch {
+      // skip unparseable lines
+    }
+    lineIdx++;
+  }
+
+  // Build sorted FileHistory array
+  const histories: FileHistory[] = [];
+  for (const [fp, versions] of fileVersions) {
+    // Sort versions by timestamp if available, otherwise by line number
+    versions.sort((a, b) => {
+      if (a.timestamp && b.timestamp) return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      return a.lineNumber - b.lineNumber;
+    });
+    histories.push({ filePath: fp, versions });
+  }
+
+  // Sort files by number of versions descending
+  histories.sort((a, b) => b.versions.length - a.versions.length);
+
+  return histories;
+}
+
+/**
+ * Read a specific line from a JSONL file and extract the file content from it.
+ * Used to fetch full file content on demand for the file version viewer.
+ */
+export async function getFileContent(filePath: string, lineNumber: number): Promise<string | null> {
+  const rl = createInterface({
+    input: createReadStream(filePath, { encoding: 'utf-8' }),
+    crlfDelay: Infinity,
+  });
+
+  let lineIdx = 0;
+  for await (const line of rl) {
+    if (lineIdx === lineNumber) {
+      rl.close();
+      if (!line.trim()) return null;
+
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+
+        // Check assistant tool_use blocks for Edit old_string/new_string or Write content
+        if (parsed.message && typeof parsed.message === 'object') {
+          const message = parsed.message as Record<string, unknown>;
+          if (Array.isArray(message.content)) {
+            for (const block of message.content) {
+              if (typeof block !== 'object' || block === null) continue;
+              const b = block as Record<string, unknown>;
+              if (b.type === 'tool_use') {
+                const input = (b.input as Record<string, unknown>) || {};
+                const toolName = (b.name as string || '').toLowerCase();
+
+                // Write tool: full content in input.content
+                if (toolName === 'write' && typeof input.content === 'string') {
+                  return input.content;
+                }
+
+                // Edit tool: old_string/new_string diff
+                if (toolName === 'edit' && (input.old_string || input.new_string)) {
+                  return `--- old ---\n${input.old_string || ''}\n--- new ---\n${input.new_string || ''}`;
+                }
+              }
+
+              // tool_result blocks in user messages
+              if (b.type === 'tool_result') {
+                let resultText = '';
+                if (typeof b.content === 'string') {
+                  resultText = b.content;
+                } else if (Array.isArray(b.content)) {
+                  for (const c of b.content) {
+                    if (typeof c === 'object' && c !== null && (c as Record<string, unknown>).type === 'text') {
+                      resultText += (resultText ? '\n' : '') + ((c as Record<string, unknown>).text as string || '');
+                    }
+                  }
+                }
+                if (resultText.length > 0) return resultText;
+              }
+            }
+          }
+        }
+
+        // Top-level toolUseResult
+        if (parsed.toolUseResult && typeof parsed.toolUseResult === 'object') {
+          const tr = parsed.toolUseResult as Record<string, unknown>;
+          if (typeof tr.content === 'string') return tr.content;
+          if (typeof tr.originalFile === 'string') return tr.originalFile;
+          if (tr.oldString || tr.newString) {
+            return `--- old ---\n${tr.oldString || ''}\n--- new ---\n${tr.newString || ''}`;
+          }
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    }
+    lineIdx++;
+  }
+
+  return null;
 }
