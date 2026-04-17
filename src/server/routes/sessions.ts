@@ -5,6 +5,12 @@ import { homedir } from 'os';
 import { ClaudeAdapter } from '../adapters/claude/index.js';
 import type { Adapter } from '../adapters/types.js';
 
+// Express 5 params can be string | string[]
+function param(req: Request, name: string): string {
+  const val = req.params[name];
+  return Array.isArray(val) ? val[0] : val;
+}
+
 const router = Router();
 const adapters: Adapter[] = [new ClaudeAdapter()];
 const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
@@ -30,7 +36,7 @@ router.get('/sessions/:id', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const detail = await adapter.getSessionDetail(req.params.id);
+          const detail = await adapter.getSessionDetail(param(req, 'id'));
           res.json(detail);
           return;
         } catch {
@@ -49,7 +55,7 @@ router.get('/sessions/:id/conversation', async (req: Request, res: Response) => 
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const messages = await (adapter as any).getConversation(req.params.id);
+          const messages = await (adapter as any).getConversation(param(req, 'id'));
           res.json(messages);
           return;
         } catch {
@@ -68,7 +74,7 @@ router.get('/sessions/:id/images/:imageId', async (req: Request, res: Response) 
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const data = await adapter.getImageData(req.params.id, req.params.imageId);
+          const data = await adapter.getImageData(param(req, 'id'), param(req, 'imageId'));
           const buffer = Buffer.from(data.base64, 'base64');
           res.set('Content-Type', data.mediaType);
           res.set('Cache-Control', 'private, max-age=300');
@@ -90,7 +96,7 @@ router.get('/sessions/:id/files', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const files = await (adapter as any).getFileHistory(req.params.id);
+          const files = await (adapter as any).getFileHistory(param(req, 'id'));
           res.json(files);
           return;
         } catch {
@@ -106,7 +112,7 @@ router.get('/sessions/:id/files', async (req: Request, res: Response) => {
 
 router.get('/sessions/:id/files/:lineNumber', async (req: Request, res: Response) => {
   try {
-    const lineNumber = parseInt(req.params.lineNumber, 10);
+    const lineNumber = parseInt(param(req, 'lineNumber'), 10);
     if (isNaN(lineNumber) || lineNumber < 0) {
       res.status(400).json({ error: 'Invalid line number' });
       return;
@@ -114,7 +120,7 @@ router.get('/sessions/:id/files/:lineNumber', async (req: Request, res: Response
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const content = await (adapter as any).getFileContent(req.params.id, lineNumber);
+          const content = await (adapter as any).getFileContent(param(req, 'id'), lineNumber);
           if (content === null) {
             res.status(404).json({ error: 'Content not found at line' });
             return;
@@ -139,8 +145,8 @@ router.post('/sessions/:id/strip', async (req: Request, res: Response) => {
       if (await adapter.detect()) {
         try {
           const result = imageIds?.length
-            ? await adapter.stripImages(req.params.id, imageIds)
-            : await adapter.stripAllImages(req.params.id);
+            ? await adapter.stripImages(param(req, 'id'), imageIds)
+            : await adapter.stripAllImages(param(req, 'id'));
           res.json(result);
           return;
         } catch {
@@ -165,7 +171,7 @@ router.post('/sessions/:id/resize', async (req: Request, res: Response) => {
       if (await adapter.detect()) {
         try {
           const result = await (adapter as any).resizeImages(
-            req.params.id,
+            param(req, 'id'),
             imageIds?.length ? imageIds : null,
             targetBytes,
           );
@@ -192,7 +198,7 @@ router.post('/sessions/:id/restore', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          await adapter.restoreImage(req.params.id, imageId, base64, mediaType);
+          await adapter.restoreImage(param(req, 'id'), imageId, base64, mediaType);
           res.json({ ok: true });
           return;
         } catch {
@@ -232,7 +238,7 @@ router.get('/backups', async (_req: Request, res: Response) => {
 
 router.delete('/backups/:name', async (req: Request, res: Response) => {
   try {
-    const filePath = join(BACKUP_DIR, req.params.name);
+    const filePath = join(BACKUP_DIR, param(req, 'name'));
     await unlink(filePath);
     res.json({ ok: true });
   } catch (err) {

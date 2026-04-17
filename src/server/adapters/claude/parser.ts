@@ -1,5 +1,5 @@
 import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileVersion, FileHistory } from '../types.js';
-import { readFile, stat } from 'fs/promises';
+import { readFile, writeFile, stat } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 import { basename } from 'path';
@@ -468,7 +468,7 @@ async function resizeToTargetSize(data: string, mediaType: string, targetBytes: 
   // Iteratively scale down until we hit the target size
   // Start by estimating scale factor from size ratio
   let scale = Math.sqrt(targetBytes / currentSize) * 0.9; // slightly aggressive
-  let bestBuffer = buffer;
+  let bestBuffer: Buffer = buffer;
   let attempts = 0;
 
   while (attempts < 5) {
