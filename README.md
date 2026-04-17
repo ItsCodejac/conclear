@@ -4,28 +4,65 @@ A local web UI for inspecting and cleaning up AI coding assistant session data.
 
 ## What it does
 
-AI coding tools like Claude Code store conversation sessions as JSONL files that accumulate screenshots, image pastes, and other binary data over time. These files can grow to hundreds of megabytes. ConClear gives you a visual interface to find the heaviest sessions, preview their images, and strip or resize them to reclaim disk space -- without losing the conversation text.
+AI coding tools like Claude Code, Cursor, Gemini CLI, Copilot, and Cline store conversation sessions that accumulate screenshots, image pastes, and other binary data over time. These files can grow to hundreds of megabytes. ConClear gives you a visual interface to find the heaviest sessions, preview their images, and strip or resize them to reclaim disk space -- without losing the conversation text.
+
+## Installation
+
+```
+npm install -g conclear
+```
+
+Or run without installing:
+
+```
+npx conclear
+```
 
 ## Quick start
+
+```
+conclear
+```
+
+This starts a local web UI and opens it in your browser. The app will scan for sessions automatically.
+
+For development:
 
 ```
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser. The app will scan for sessions automatically.
+## CLI commands
 
-For production mode:
+ConClear includes query commands that work without launching the web UI:
 
 ```
-npm run build
-npm start
+conclear search <query> [--project <name>] [--limit <n>] [--json]
+  Search across all sessions for matching messages
+
+conclear files <path-pattern> [--session <name-or-id>] [--latest] [--json]
+  Find file versions matching a path pattern (e.g. "api.ts", "src/server/*")
+
+conclear sessions [--project <name>] [--limit <n>] [--json]
+  List sessions, most recent first
+
+conclear summary <session-name-or-id> [--json]
+  Quick summary of a session
+
+conclear context <session-name-or-id> [--json]
+  Dump full conversation as clean text (user/assistant only)
+
+conclear export <session-name-or-id> [--output <file>] [--format md|txt]
+  Export session as a clean markdown document
 ```
+
+All commands support `--json` for structured output.
 
 ## Features
 
 **Session management**
-- Auto-discovers sessions from `~/.claude/projects/`
+- Auto-discovers sessions from all supported tools
 - Groups sessions by project with collapsible headers
 - Search/filter across session names, projects, and IDs
 - Sortable columns (name, project, last active, size, image count)
@@ -66,18 +103,19 @@ npm start
 
 ## Supported tools
 
-Currently supported:
-- **Claude Code** -- reads JSONL session files from `~/.claude/projects/`
+- **Claude Code** -- JSONL session files from `~/.claude/projects/`
+- **Cursor** -- SQLite conversation database
+- **Gemini CLI** -- Gemini CLI session files
+- **Cline** -- Cline/Continue session data
+- **GitHub Copilot** -- Copilot Chat session data
 
-Planned:
-- Gemini CLI
-- Cursor
-- Cline
-- Copilot Chat
+## MCP server
+
+MCP server available for AI agent integration.
 
 ## How it works
 
-ConClear runs a local Express server that reads JSONL session files directly from disk. It parses them to extract metadata, image references, message counts, and file sizes. The React frontend presents this data and sends operation requests (strip, resize, restore) back to the server, which modifies the session files in place.
+ConClear runs a local Express server that reads session files directly from disk. It parses them to extract metadata, image references, message counts, and file sizes. The React frontend presents this data and sends operation requests (strip, resize, restore) back to the server, which modifies the session files in place.
 
 All processing happens locally. No data is sent anywhere. Backups of original files are stored in `~/.conclear/backups/` before any destructive operation.
 
@@ -91,3 +129,7 @@ npm start              # Run production server (opens browser automatically)
 ```
 
 The built output goes to `dist/`. The package exposes a `conclear` CLI binary.
+
+## License
+
+MIT -- see [LICENSE](./LICENSE) for details.

@@ -1,0 +1,7 @@
+src/
+tsconfig.json
+tsconfig.server.json
+vite.config.ts
+.gitignore
+*.png
+.playwright-mcp/
