@@ -161,7 +161,7 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
     let imageCount = 0;
     let imageSizeBytes = 0;
     for (let i = 0; i < requests.length; i++) {
-      const blobs: Array<{ id: string; size: number; mediaType: string; location: string }> = [];
+      const blobs: Array<{ id: string; size: number; mediaType: string; location: 'message' | 'response' }> = [];
       findInlineImages(requests[i], i, blobs);
       imageCount += blobs.length;
       imageSizeBytes += blobs.reduce((sum, b) => sum + b.size, 0);
@@ -251,7 +251,7 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
       if (userText) lastUserText = userText;
 
       // Find images
-      const blobs: Array<{ id: string; size: number; mediaType: string; location: string }> = [];
+      const blobs: Array<{ id: string; size: number; mediaType: string; location: 'message' | 'response' }> = [];
       findInlineImages(req, i, blobs);
 
       for (const blob of blobs) {
@@ -551,7 +551,7 @@ export async function parseConversation(filePath: string): Promise<CopilotParsed
       const timestamp = req.timestamp ? new Date(req.timestamp).toISOString() : undefined;
 
       // Check for images in this request
-      const blobs: Array<{ id: string; size: number; mediaType: string; location: string }> = [];
+      const blobs: Array<{ id: string; size: number; mediaType: string; location: 'message' | 'response' }> = [];
       findInlineImages(req, i, blobs);
       const hasUserImage = blobs.some(b => b.location === 'message');
       const userImageId = hasUserImage ? blobs.find(b => b.location === 'message')?.id : undefined;
