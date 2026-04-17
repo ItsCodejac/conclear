@@ -4,6 +4,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { ClaudeAdapter } from '../adapters/claude/index.js';
 import { GeminiAdapter } from '../adapters/gemini/index.js';
+import { ClineAdapter } from '../adapters/cline/index.js';
 import type { Adapter } from '../adapters/types.js';
 
 // Express 5 params can be string | string[]
@@ -13,7 +14,7 @@ function param(req: Request, name: string): string {
 }
 
 const router = Router();
-const adapters: Adapter[] = [new ClaudeAdapter(), new GeminiAdapter()];
+const adapters: Adapter[] = [new ClaudeAdapter(), new GeminiAdapter(), new ClineAdapter()];
 const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 router.get('/sessions', async (_req: Request, res: Response) => {
