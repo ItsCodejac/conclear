@@ -7,12 +7,13 @@ interface ToolbarProps {
   onResizeAll?: (targetBytes: number) => void;
   onClearStripped?: () => void;
   onShowBackups: () => void;
+  onExport?: () => void;
   strippedCount: number;
   sessionName: string | null;
   operating?: string | null;
 }
 
-export function Toolbar({ onRefresh, onStripAll, onResizeAll, onClearStripped, onShowBackups, strippedCount, sessionName, operating }: ToolbarProps) {
+export function Toolbar({ onRefresh, onStripAll, onResizeAll, onClearStripped, onShowBackups, onExport, strippedCount, sessionName, operating }: ToolbarProps) {
   const busy = !!operating;
 
   return (
@@ -31,6 +32,11 @@ export function Toolbar({ onRefresh, onStripAll, onResizeAll, onClearStripped, o
       {onClearStripped && (
         <button className={styles.btnClear} onClick={onClearStripped} disabled={busy}>
           Clear {strippedCount} stripped
+        </button>
+      )}
+      {onExport && (
+        <button className={styles.btn} onClick={onExport} disabled={busy}>
+          Export
         </button>
       )}
       {operating && (

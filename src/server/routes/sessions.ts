@@ -6,6 +6,7 @@ import { ClaudeAdapter } from '../adapters/claude/index.js';
 import { GeminiAdapter } from '../adapters/gemini/index.js';
 import { ClineAdapter } from '../adapters/cline/index.js';
 import { CursorAdapter } from '../adapters/cursor/index.js';
+import { CopilotAdapter } from '../adapters/copilot/index.js';
 import type { Adapter } from '../adapters/types.js';
 
 // Express 5 params can be string | string[]
@@ -15,7 +16,7 @@ function param(req: Request, name: string): string {
 }
 
 const router = Router();
-const adapters: Adapter[] = [new ClaudeAdapter(), new GeminiAdapter(), new ClineAdapter(), new CursorAdapter()];
+const adapters: Adapter[] = [new ClaudeAdapter(), new GeminiAdapter(), new ClineAdapter(), new CursorAdapter(), new CopilotAdapter()];
 const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 router.get('/sessions', async (_req: Request, res: Response) => {
@@ -129,6 +130,31 @@ router.get('/sessions/:id/files/:lineNumber', async (req: Request, res: Response
             return;
           }
           res.json({ content });
+          return;
+        } catch {
+          // try next adapter
+        }
+      }
+    }
+    res.status(404).json({ error: 'Session not found' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get('/sessions/:id/export', async (req: Request, res: Response) => {
+  try {
+    for (const adapter of adapters) {
+      if (await adapter.detect()) {
+        try {
+          const { markdown, name } = await (adapter as any).exportSession(param(req, 'id'));
+          const safeName = (name || param(req, 'id'))
+            .replace(/[^a-zA-Z0-9_\- ]/g, '')
+            .replace(/\s+/g, '-')
+            .slice(0, 80);
+          res.set('Content-Type', 'text/markdown; charset=utf-8');
+          res.set('Content-Disposition', `attachment; filename="${safeName}.md"`);
+          res.send(markdown);
           return;
         } catch {
           // try next adapter

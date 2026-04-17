@@ -372,3 +372,157 @@
   color: #3f3f46;
   margin: 0 2px;
 }
+
+/* Syntax-highlighted code line */
+.lineTextHighlighted {
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Compare button in version list */
+.compareBtn {
+  padding: 1px 6px;
+  border: 1px solid #2e2e32;
+  border-radius: 0;
+  background: transparent;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 9px;
+  color: #52525b;
+  cursor: pointer;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.compareBtn:hover {
+  color: #a1a1aa;
+  border-color: #3f3f46;
+}
+
+.compareBtnActive {
+  composes: compareBtn;
+  color: #60a5fa;
+  border-color: #60a5fa;
+}
+
+/* Diff overlay toggle in header */
+.overlayBtnActive {
+  composes: overlayBtn;
+  color: #60a5fa;
+  border-color: #60a5fa;
+}
+
+/* Diff view */
+.diffContainer {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 0;
+}
+
+.diffLine {
+  display: flex;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 0 16px;
+}
+
+.diffLineAdded {
+  composes: diffLine;
+  border-left: 3px solid #22c55e;
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.diffLineRemoved {
+  composes: diffLine;
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.diffLineContext {
+  composes: diffLine;
+  border-left: 3px solid transparent;
+}
+
+.diffLineNum {
+  width: 40px;
+  text-align: right;
+  padding-right: 8px;
+  color: #3f3f46;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.diffLineNumSpacer {
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.diffGutter {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+  font-weight: 700;
+}
+
+.diffGutterAdd {
+  composes: diffGutter;
+  color: #22c55e;
+}
+
+.diffGutterRemove {
+  composes: diffGutter;
+  color: #ef4444;
+}
+
+.diffGutterContext {
+  composes: diffGutter;
+  color: #27272a;
+}
+
+.diffText {
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+.diffTextAdd {
+  composes: diffText;
+  color: #86efac;
+}
+
+.diffTextRemove {
+  composes: diffText;
+  color: #fca5a5;
+}
+
+.diffTextContext {
+  composes: diffText;
+  color: #71717a;
+}
+
+.diffHeader {
+  padding: 8px 16px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #71717a;
+  border-bottom: 1px solid #2e2e32;
+  background: #1a1a1e;
+}
+
+.diffStats {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.diffStatAdd {
+  color: #22c55e;
+}
+
+.diffStatRemove {
+  color: #ef4444;
+}

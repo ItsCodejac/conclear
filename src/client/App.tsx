@@ -336,6 +336,33 @@ export function App() {
     }
   }, [selectSession, toast]);
 
+  const handleExport = useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/sessions/${selectedId}/export`);
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      // Extract filename from Content-Disposition header
+      const disposition = res.headers.get('Content-Disposition');
+      let filename = 'session.md';
+      if (disposition) {
+        const match = disposition.match(/filename="([^"]+)"/);
+        if (match) filename = match[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Session exported');
+    } catch (err) {
+      toast.error(`Export failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
+  }, [selectedId, toast]);
+
   const expandSession = useCallback((id: string) => {
     // The single-click handler (onClick) already fires and starts loading.
     // We just need to flag expanded=true. The render condition is `expanded && detail`,
@@ -370,6 +397,7 @@ export function App() {
         onResizeAll={detail && detail.imageCount > 0 ? (targetBytes: number) => handleResize(targetBytes) : undefined}
         onClearStripped={strippedIds.size > 0 ? clearStripped : undefined}
         onShowBackups={() => setShowBackups(true)}
+        onExport={selectedId ? handleExport : undefined}
         strippedCount={strippedIds.size}
         sessionName={detail?.name ?? detail?.preview ?? detail?.id ?? null}
         operating={operating}

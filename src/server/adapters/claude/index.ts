@@ -1,7 +1,7 @@
 import { Adapter, Session, SessionDetail, ImageData } from '../types.js';
 import type { ParsedConversation } from './parser.js';
 import type { FileHistory } from '../types.js';
-import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeImagesInContent, getImageData as getImageDataFromFile, restoreImageData, parseConversation, parseFileHistory, getFileContent as getFileContentFromFile } from './parser.js';
+import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeImagesInContent, getImageData as getImageDataFromFile, restoreImageData, parseConversation, parseFileHistory, getFileContent as getFileContentFromFile, exportSessionMarkdown } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
@@ -287,5 +287,22 @@ export class ClaudeAdapter implements Adapter {
   async getFileContent(sessionId: string, lineNumber: number): Promise<string | null> {
     const filePath = await this.findSessionFile(sessionId);
     return getFileContentFromFile(filePath, lineNumber);
+  }
+
+  async exportSession(sessionId: string): Promise<{ markdown: string; name: string | null }> {
+    const filePath = await this.findSessionFile(sessionId);
+    const markdown = await exportSessionMarkdown(filePath);
+
+    // Get session name for the filename
+    let name: string | null = null;
+    const detail = await parseSessionDetail(filePath);
+    if (detail?.name) {
+      name = detail.name;
+    } else {
+      const nameMap = await loadSessionNameMap();
+      name = nameMap.get(sessionId) ?? null;
+    }
+
+    return { markdown, name };
   }
 }

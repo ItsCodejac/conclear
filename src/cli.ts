@@ -15,7 +15,7 @@
  *   conclear --ui     — starts the web UI
  */
 
-const QUERY_COMMANDS = new Set(['search', 'files', 'sessions', 'summary', 'context']);
+const QUERY_COMMANDS = new Set(['search', 'files', 'sessions', 'summary', 'context', 'export']);
 
 function printHelp(): void {
   process.stdout.write(`ConClear - AI session explorer
@@ -35,6 +35,9 @@ QUERY COMMANDS (no server needed):
 
   conclear context <session-name-or-id> [--json]
     Dump full conversation as clean text (user/assistant only)
+
+  conclear export <session-name-or-id> [--output <file>] [--format md|txt]
+    Export session as a clean markdown document
 
 UI LAUNCHER:
   conclear            Start the web UI
@@ -58,7 +61,7 @@ async function main(): Promise<void> {
 
   // Query commands — import handler module, run directly (no server)
   if (command && QUERY_COMMANDS.has(command)) {
-    const { cmdSearch, cmdFiles, cmdSessions, cmdSummary, cmdContext } = await import('./cli-query.js');
+    const { cmdSearch, cmdFiles, cmdSessions, cmdSummary, cmdContext, cmdExport } = await import('./cli-query.js');
     const cmdArgs = args.slice(1);
 
     switch (command) {
@@ -67,6 +70,7 @@ async function main(): Promise<void> {
       case 'sessions': await cmdSessions(cmdArgs); break;
       case 'summary':  await cmdSummary(cmdArgs); break;
       case 'context':  await cmdContext(cmdArgs); break;
+      case 'export':   await cmdExport(cmdArgs); break;
     }
     return;
   }

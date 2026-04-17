@@ -4,9 +4,10 @@
  */
 
 import { ClaudeAdapter } from './server/adapters/claude/index.js';
-import { parseConversation, parseFileHistory, getFileContent } from './server/adapters/claude/parser.js';
+import { parseConversation, parseFileHistory, getFileContent, exportSessionMarkdown } from './server/adapters/claude/parser.js';
 import type { Session } from './server/adapters/types.js';
 import { createReadStream } from 'fs';
+import { writeFile } from 'fs/promises';
 import { createInterface } from 'readline';
 
 // ── Arg parsing helpers (zero deps) ──────────────────────────────────────────
@@ -487,5 +488,42 @@ export async function cmdContext(args: string[]): Promise<void> {
     const ts = m.timestamp ? ` [${formatDate(m.timestamp)}]` : '';
     process.stdout.write(`--- ${prefix}${ts} ---\n`);
     process.stdout.write(m.text + '\n\n');
+  }
+}
+
+export async function cmdExport(args: string[]): Promise<void> {
+  const outputFile = getOption(args, '--output') || getOption(args, '-o');
+  const format = getOption(args, '--format', 'md');
+
+  const query = args.join(' ').trim();
+  if (!query) {
+    process.stderr.write('Usage: conclear export <session-name-or-id> [--output <file>] [--format md|txt]\n');
+    process.exit(1);
+  }
+
+  const adapter = new ClaudeAdapter();
+  const session = await resolveSession(adapter, query);
+  if (!session) {
+    process.stderr.write(`Session not found: ${query}\n`);
+    process.exit(1);
+  }
+
+  let markdown = await exportSessionMarkdown(session.filePath);
+
+  // If txt format requested, strip markdown formatting
+  if (format === 'txt') {
+    markdown = markdown
+      .replace(/^#{1,3}\s+/gm, '')      // strip heading markers
+      .replace(/\*\*([^*]+)\*\*/g, '$1') // strip bold
+      .replace(/^> /gm, '  ')           // blockquotes to indentation
+      .replace(/```[^\n]*\n/g, '')       // strip code fence openers
+      .replace(/```/g, '');              // strip code fence closers
+  }
+
+  if (outputFile) {
+    await writeFile(outputFile, markdown, 'utf-8');
+    process.stderr.write(`Exported to ${outputFile}\n`);
+  } else {
+    process.stdout.write(markdown);
   }
 }

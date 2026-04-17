@@ -1261,6 +1261,212 @@ export async function parseFileHistory(filePath: string): Promise<FileHistory[]>
 }
 
 /**
+ * Export a session as a clean markdown document.
+ * Uses the raw JSONL for richer output than parseConversation (full tool details, diffs, etc.)
+ */
+export async function exportSessionMarkdown(filePath: string): Promise<string> {
+  const rl = createInterface({
+    input: createReadStream(filePath, { encoding: 'utf-8' }),
+    crlfDelay: Infinity,
+  });
+
+  // First pass: collect session metadata
+  let sessionName: string | null = null;
+  let project: string | null = null;
+  let firstTimestamp: string | null = null;
+  let lastTimestamp: string | null = null;
+  let messageCount = 0;
+
+  interface ExportMessage {
+    role: 'user' | 'assistant';
+    timestamp?: string;
+    textParts: string[];
+    toolCalls: Array<{ name: string; detail: string }>;
+    hasImage: boolean;
+    imageContext?: string;
+  }
+
+  const messages: ExportMessage[] = [];
+
+  let lineIdx = 0;
+  let lastUserText = '';
+
+  for await (const line of rl) {
+    if (!line.trim()) { lineIdx++; continue; }
+
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const type = parsed.type as string;
+      const timestamp = parsed.timestamp as string | undefined;
+
+      if (type === 'custom-title' && parsed.customTitle) {
+        sessionName = parsed.customTitle as string;
+      }
+
+      if (parsed.cwd && !project) {
+        project = parsed.cwd as string;
+      }
+
+      if (timestamp) {
+        if (!firstTimestamp) firstTimestamp = timestamp;
+        lastTimestamp = timestamp;
+      }
+
+      if (type !== 'user' && type !== 'assistant') { lineIdx++; continue; }
+
+      const message = parsed.message as Record<string, unknown> | undefined;
+      if (!message) { lineIdx++; continue; }
+
+      const role = (message.role as string) === 'assistant' ? 'assistant' : 'user';
+      const content = message.content;
+      messageCount++;
+
+      const textParts: string[] = [];
+      const toolCalls: Array<{ name: string; detail: string }> = [];
+      let hasImage = false;
+      let imageContext: string | undefined;
+
+      if (typeof content === 'string') {
+        const cleaned = stripSystemXmlTags(content);
+        if (cleaned) textParts.push(cleaned);
+      } else if (Array.isArray(content)) {
+        for (const block of content) {
+          if (typeof block !== 'object' || block === null) continue;
+          const b = block as Record<string, unknown>;
+
+          if (b.type === 'text' && typeof b.text === 'string') {
+            const cleaned = stripSystemXmlTags(b.text);
+            if (cleaned) textParts.push(cleaned);
+          } else if (b.type === 'tool_use') {
+            const toolName = (b.name as string) || 'unknown';
+            const input = (b.input as Record<string, unknown>) || {};
+            let detail = '';
+
+            if (toolName.toLowerCase() === 'edit' && input.file_path) {
+              // Show as diff
+              const fp = input.file_path as string;
+              detail = `File: ${fp}\n`;
+              if (input.old_string && input.new_string) {
+                detail += '```diff\n';
+                const oldLines = String(input.old_string).split('\n');
+                const newLines = String(input.new_string).split('\n');
+                for (const l of oldLines) detail += `- ${l}\n`;
+                for (const l of newLines) detail += `+ ${l}\n`;
+                detail += '```';
+              }
+            } else if (toolName.toLowerCase() === 'write' && input.file_path) {
+              const fp = input.file_path as string;
+              const content = input.content as string | undefined;
+              detail = `File: ${fp}`;
+              if (content) {
+                const lines = content.split('\n');
+                const preview = lines.slice(0, 30).join('\n');
+                detail += `\n\`\`\`\n${preview}${lines.length > 30 ? '\n... (' + (lines.length - 30) + ' more lines)' : ''}\n\`\`\``;
+              }
+            } else if (toolName.toLowerCase() === 'read' && input.file_path) {
+              detail = `File: ${input.file_path}`;
+            } else if (toolName.toLowerCase() === 'bash' && input.command) {
+              detail = `\`\`\`bash\n${input.command}\n\`\`\``;
+            } else if (toolName.toLowerCase() === 'grep' || toolName.toLowerCase() === 'glob') {
+              detail = `Pattern: ${input.pattern || ''}`;
+              if (input.path) detail += ` in ${input.path}`;
+            } else {
+              // Generic tool call
+              const inputStr = JSON.stringify(input, null, 2);
+              if (inputStr.length > 500) {
+                detail = inputStr.slice(0, 500) + '...';
+              } else {
+                detail = inputStr;
+              }
+            }
+
+            toolCalls.push({ name: toolName, detail });
+          } else if (b.type === 'tool_result') {
+            // Skip tool results in export (noise)
+          } else if (b.type === 'image') {
+            hasImage = true;
+            imageContext = lastUserText ? lastUserText.slice(0, 80) : 'screenshot';
+          } else if (b.type === 'thinking') {
+            // Skip thinking blocks
+          }
+        }
+      }
+
+      if (role === 'user') {
+        const fullText = textParts.join('\n');
+        if (fullText) lastUserText = fullText;
+      }
+
+      // Only add messages that have content
+      if (textParts.length > 0 || toolCalls.length > 0 || hasImage) {
+        messages.push({ role, timestamp, textParts, toolCalls, hasImage, imageContext });
+      }
+    } catch {
+      // skip
+    }
+    lineIdx++;
+  }
+
+  // Build markdown output
+  const parts: string[] = [];
+
+  // Header
+  const title = sessionName || 'Untitled Session';
+  parts.push(`# ${title}\n`);
+
+  if (project) parts.push(`**Project:** ${project}  `);
+  if (firstTimestamp) {
+    const from = formatExportDate(firstTimestamp);
+    const to = lastTimestamp ? formatExportDate(lastTimestamp) : from;
+    parts.push(`**Date:** ${from}${to !== from ? ' -- ' + to : ''}  `);
+  }
+  parts.push(`**Messages:** ${messageCount}\n`);
+  parts.push('---\n');
+
+  // Messages
+  for (const msg of messages) {
+    const ts = msg.timestamp ? ` [${formatExportTime(msg.timestamp)}]` : '';
+
+    if (msg.role === 'user') {
+      parts.push(`**USER:**${ts}\n`);
+      if (msg.hasImage) {
+        parts.push(`[Image: ${msg.imageContext || 'screenshot'}]\n`);
+      }
+      for (const text of msg.textParts) {
+        // Indent user messages as blockquotes
+        const quoted = text.split('\n').map(l => `> ${l}`).join('\n');
+        parts.push(quoted + '\n');
+      }
+    } else {
+      parts.push(`**ASSISTANT:**${ts}\n`);
+      for (const text of msg.textParts) {
+        parts.push(text + '\n');
+      }
+      for (const tc of msg.toolCalls) {
+        parts.push(`\`\`\`tool:${tc.name}\n${tc.detail}\n\`\`\`\n`);
+      }
+    }
+    parts.push(''); // blank line between messages
+  }
+
+  return parts.join('\n');
+}
+
+function formatExportDate(ts: string): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function formatExportTime(ts: string): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
  * Read a specific line from a JSONL file and extract the file content from it.
  * Used to fetch full file content on demand for the file version viewer.
  */
