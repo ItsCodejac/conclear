@@ -140,7 +140,7 @@ export function SessionTable({ sessions, loading, error, selectedId, onSelect, o
   );
 
   const showToolColumn = useMemo(() => {
-    if (sessions.length === 0) return true;
+    if (sessions.length <= 1) return false;
     const firstTool = sessions[0].tool;
     return !sessions.every(s => s.tool === firstTool);
   }, [sessions]);

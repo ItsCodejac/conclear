@@ -56,7 +56,6 @@ export function App() {
     setDetailLoading(true);
     if (!isSame) {
       setStrippedIds(new Set());
-      setDetailTab('images');
       imageCache.current.clear();
     }
     try {
@@ -367,8 +366,8 @@ export function App() {
       </header>
       <Toolbar
         onRefresh={refresh}
-        onStripAll={detail ? () => handleStripWithConfirm() : undefined}
-        onResizeAll={detail ? (targetBytes: number) => handleResize(targetBytes) : undefined}
+        onStripAll={detail && detail.imageCount > 0 ? () => handleStripWithConfirm() : undefined}
+        onResizeAll={detail && detail.imageCount > 0 ? (targetBytes: number) => handleResize(targetBytes) : undefined}
         onClearStripped={strippedIds.size > 0 ? clearStripped : undefined}
         onShowBackups={() => setShowBackups(true)}
         strippedCount={strippedIds.size}

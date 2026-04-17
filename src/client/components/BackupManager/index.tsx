@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { formatRelative } from '../../utils';
+import { formatRelative, decodeProjectName } from '../../utils';
 import styles from './styles.module.css';
 
 interface Backup {
@@ -16,6 +16,37 @@ function formatBytes(bytes: number): string {
 }
 
 const timeAgo = formatRelative;
+
+function formatBackupName(name: string): string {
+  // Backup filenames look like: <encoded-project-path>_<uuid>_<timestamp>.jsonl
+  // or similar patterns with encoded paths and UUIDs
+  try {
+    // Strip extension
+    const base = name.replace(/\.\w+$/, '');
+
+    // Try to extract a project name from the leading encoded path segment
+    // Split on UUID-like patterns (8-4-4-4-12 hex)
+    const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const parts = base.split(uuidPattern);
+    const projectRaw = parts[0]?.replace(/_+$/, '') || '';
+    const project = projectRaw ? decodeProjectName(projectRaw) : 'session';
+
+    // Try to extract a timestamp from the filename (epoch millis or ISO-like)
+    const tsMatch = base.match(/(\d{13})/); // epoch millis
+    let dateStr = '';
+    if (tsMatch) {
+      const d = new Date(parseInt(tsMatch[1], 10));
+      if (!isNaN(d.getTime())) {
+        dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      }
+    }
+
+    return `${project} — backup${dateStr ? ` — ${dateStr}` : ''}`;
+  } catch {
+    return name;
+  }
+}
 
 interface BackupManagerProps {
   visible: boolean;
@@ -99,7 +130,7 @@ export function BackupManager({ visible, onClose, onDeleteAll }: BackupManagerPr
             <tbody>
               {backups.map(b => (
                 <tr key={b.name} className={styles.row}>
-                  <td className={styles.nameCell} title={b.path}>{b.name}</td>
+                  <td className={styles.nameCell} title={b.name}>{formatBackupName(b.name)}</td>
                   <td className={styles.sizeCell}>{formatBytes(b.sizeBytes)}</td>
                   <td className={styles.timeCell}>{timeAgo(b.createdAt)}</td>
                   <td>
