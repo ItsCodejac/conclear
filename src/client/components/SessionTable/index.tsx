@@ -217,7 +217,7 @@ export function SessionTable({ sessions, loading, error, selectedId, onSelect, o
     });
   };
 
-  if (loading) return <div className={styles.loading}>Loading sessions...</div>;
+  if (loading && sessions.length === 0) return <div className={styles.loading}>Loading sessions...</div>;
   if (error) return <div className={styles.error}>Error: {error}</div>;
   if (sessions.length === 0) return <div className={styles.empty}>No sessions found</div>;
 
