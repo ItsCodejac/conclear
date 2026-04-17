@@ -5,6 +5,7 @@ import { Toolbar } from './components/Toolbar';
 import { ImagePreview } from './components/ImagePreview';
 import { ConversationView } from './components/ConversationView';
 import { TimelineView } from './components/TimelineView';
+import { FilesView } from './components/FilesView';
 import { BackupManager } from './components/BackupManager';
 import { HelpPanel } from './components/HelpPanel';
 import { DiskUsage } from './components/DiskUsage';
@@ -40,7 +41,7 @@ export function App() {
   const [showBackups, setShowBackups] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [detailTab, setDetailTab] = useState<'images' | 'timeline' | 'chat'>('images');
+  const [detailTab, setDetailTab] = useState<'images' | 'timeline' | 'chat' | 'files'>('images');
   const [operating, setOperating] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [toasts, toast] = useToast();
@@ -426,6 +427,12 @@ export function App() {
               >
                 Chat ({detail.messageCount})
               </button>
+              <button
+                className={detailTab === 'files' ? styles.tabActive : styles.tab}
+                onClick={() => setDetailTab('files')}
+              >
+                Files
+              </button>
             </div>
             {detailTab === 'images' && (
               <ImagePreview
@@ -443,6 +450,9 @@ export function App() {
             )}
             {detailTab === 'chat' && (
               <ConversationView sessionId={detail.id} />
+            )}
+            {detailTab === 'files' && (
+              <FilesView sessionId={detail.id} />
             )}
           </div>
         </div>
@@ -482,6 +492,12 @@ export function App() {
                   >
                     Chat ({detail.messageCount})
                   </button>
+                  <button
+                    className={detailTab === 'files' ? styles.tabActive : styles.tab}
+                    onClick={() => setDetailTab('files')}
+                  >
+                    Files
+                  </button>
                 </div>
                 {detailTab === 'images' && (
                   <ImagePreview
@@ -499,6 +515,9 @@ export function App() {
                 )}
                 {detailTab === 'chat' && (
                   <ConversationView sessionId={detail.id} />
+                )}
+                {detailTab === 'files' && (
+                  <FilesView sessionId={detail.id} />
                 )}
               </div>
             ) : (

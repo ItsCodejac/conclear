@@ -1,6 +1,7 @@
 import { Adapter, Session, SessionDetail, ImageData } from '../types.js';
 import type { ParsedConversation } from './parser.js';
-import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeImagesInContent, getImageData as getImageDataFromFile, restoreImageData, parseConversation } from './parser.js';
+import type { FileHistory } from '../types.js';
+import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeImagesInContent, getImageData as getImageDataFromFile, restoreImageData, parseConversation, parseFileHistory, getFileContent as getFileContentFromFile } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
@@ -276,5 +277,15 @@ export class ClaudeAdapter implements Adapter {
   async getConversation(sessionId: string): Promise<ParsedConversation> {
     const filePath = await this.findSessionFile(sessionId);
     return parseConversation(filePath);
+  }
+
+  async getFileHistory(sessionId: string): Promise<FileHistory[]> {
+    const filePath = await this.findSessionFile(sessionId);
+    return parseFileHistory(filePath);
+  }
+
+  async getFileContent(sessionId: string, lineNumber: number): Promise<string | null> {
+    const filePath = await this.findSessionFile(sessionId);
+    return getFileContentFromFile(filePath, lineNumber);
   }
 }

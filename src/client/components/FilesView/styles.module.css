@@ -1,0 +1,261 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2e2e32;
+  background: #141416;
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 0;
+  padding: 4px 8px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+  outline: none;
+}
+
+.searchInput::placeholder { color: #52525b; }
+.searchInput:focus { border-color: #52525b; color: #e4e4e7; }
+
+.count {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #52525b;
+  white-space: nowrap;
+}
+
+.splitPane {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.fileList {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+}
+
+.fileItem {
+  padding: 4px 8px;
+  border-bottom: 1px solid #1e1e22;
+  cursor: pointer;
+}
+
+.fileItem:hover {
+  background: #1e1e22;
+}
+
+.fileItemActive {
+  composes: fileItem;
+  background: #27272a;
+}
+
+.filePath {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #e4e4e7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileMeta {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #52525b;
+}
+
+.opCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.opRead { color: #71717a; }
+.opEdit { color: #f59e0b; }
+.opWrite { color: #22c55e; }
+
+.versionList {
+  padding: 0 8px 4px 8px;
+}
+
+.version {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 6px;
+  margin-top: 2px;
+  background: #1e1e22;
+  cursor: pointer;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+}
+
+.version:hover {
+  background: #27272a;
+}
+
+.versionActive {
+  composes: version;
+  background: #27272a;
+  border-left: 2px solid #a1a1aa;
+}
+
+.versionTime {
+  color: #3f3f46;
+  flex-shrink: 0;
+  width: 65px;
+}
+
+.versionOp {
+  font-weight: 600;
+  font-size: 9px;
+  flex-shrink: 0;
+  width: 36px;
+  text-align: center;
+}
+
+.versionOpRead { color: #71717a; }
+.versionOpEdit { color: #f59e0b; }
+.versionOpWrite { color: #22c55e; }
+
+.versionMeta {
+  color: #3f3f46;
+  flex-shrink: 0;
+}
+
+.versionPreview {
+  flex: 1;
+  color: #52525b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.codePanel {
+  width: 50%;
+  min-width: 300px;
+  border-left: 1px solid #2e2e32;
+  display: flex;
+  flex-direction: column;
+  background: #141416;
+}
+
+.codePanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #2e2e32;
+  background: #141416;
+  flex-shrink: 0;
+}
+
+.codePanelPath {
+  flex: 1;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.codePanelMeta {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #3f3f46;
+  flex-shrink: 0;
+}
+
+.copyBtn {
+  padding: 2px 8px;
+  border: 1px solid #3f3f46;
+  background: #27272a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 10px;
+  color: #71717a;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.copyBtn:hover {
+  background: #3f3f46;
+  color: #e4e4e7;
+}
+
+.copyBtnDone {
+  composes: copyBtn;
+  color: #22c55e;
+  border-color: #22c55e;
+}
+
+.codeViewer {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.codeLine {
+  display: flex;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.codeLine:hover {
+  background: #1e1e22;
+}
+
+.lineNum {
+  width: 48px;
+  text-align: right;
+  padding-right: 12px;
+  color: #3f3f46;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.lineText {
+  color: #a1a1aa;
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+.codeLoading {
+  padding: 16px;
+  text-align: center;
+  color: #52525b;
+  font-size: 11px;
+}
+
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: #52525b;
+  font-size: 12px;
+}
+
+.loading {
+  composes: empty;
+}

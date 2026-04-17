@@ -53,6 +53,21 @@ export interface TimelineEvent {
   durationMs?: number;
 }
 
+export interface FileVersion {
+  filePath: string;
+  timestamp?: string;
+  operation: 'read' | 'edit' | 'write';
+  contentPreview: string;
+  lineCount: number;
+  sizeBytes: number;
+  lineNumber: number;
+}
+
+export interface FileHistory {
+  filePath: string;
+  versions: FileVersion[];
+}
+
 export type SortField = 'name' | 'project' | 'tool' | 'lastActiveAt' | 'totalSizeBytes' | 'imageCount';
 export type SortDirection = 'asc' | 'desc';
 

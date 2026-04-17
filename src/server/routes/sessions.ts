@@ -85,6 +85,53 @@ router.get('/sessions/:id/images/:imageId', async (req: Request, res: Response) 
   }
 });
 
+router.get('/sessions/:id/files', async (req: Request, res: Response) => {
+  try {
+    for (const adapter of adapters) {
+      if (await adapter.detect()) {
+        try {
+          const files = await (adapter as any).getFileHistory(req.params.id);
+          res.json(files);
+          return;
+        } catch {
+          // try next adapter
+        }
+      }
+    }
+    res.status(404).json({ error: 'Session not found' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get('/sessions/:id/files/:lineNumber', async (req: Request, res: Response) => {
+  try {
+    const lineNumber = parseInt(req.params.lineNumber, 10);
+    if (isNaN(lineNumber) || lineNumber < 0) {
+      res.status(400).json({ error: 'Invalid line number' });
+      return;
+    }
+    for (const adapter of adapters) {
+      if (await adapter.detect()) {
+        try {
+          const content = await (adapter as any).getFileContent(req.params.id, lineNumber);
+          if (content === null) {
+            res.status(404).json({ error: 'Content not found at line' });
+            return;
+          }
+          res.json({ content });
+          return;
+        } catch {
+          // try next adapter
+        }
+      }
+    }
+    res.status(404).json({ error: 'Session not found' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.post('/sessions/:id/strip', async (req: Request, res: Response) => {
   try {
     const { imageIds } = req.body as { imageIds?: string[] };
