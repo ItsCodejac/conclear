@@ -300,7 +300,9 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
         if (msg.timestamp) {
           const d = new Date(msg.timestamp);
           if (!isNaN(d.getTime())) {
-            context = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            context = `${hh}:${mm}`;
           }
         }
         const nearbyText = lastUserText.length > 50 ? lastUserText.slice(0, 47) + '...' : lastUserText;

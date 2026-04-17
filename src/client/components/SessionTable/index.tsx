@@ -25,15 +25,7 @@ interface ProjectGroup {
   imageCount: number;
 }
 
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  const now = Date.now();
-  const diffH = (now - ts) / 3600000;
-  if (diffH < 1) return `${Math.round(diffH * 60)}m ago`;
-  if (diffH < 24) return `${Math.round(diffH)}h ago`;
-  if (diffH < 24 * 7) return `${Math.round(diffH / 24)}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
+const formatDate = formatRelative;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
