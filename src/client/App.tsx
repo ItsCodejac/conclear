@@ -6,6 +6,7 @@ import { ImagePreview } from './components/ImagePreview';
 import { ConversationView } from './components/ConversationView';
 import { TimelineView } from './components/TimelineView';
 import { BackupManager } from './components/BackupManager';
+import { HelpPanel } from './components/HelpPanel';
 import { DiskUsage } from './components/DiskUsage';
 import { ConfirmDialog, type ConfirmDialogProps } from './components/ConfirmDialog';
 import { ToastContainer, useToast } from './components/Toast';
@@ -37,6 +38,7 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [strippedIds, setStrippedIds] = useState<Set<string>>(new Set());
   const [showBackups, setShowBackups] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [detailTab, setDetailTab] = useState<'images' | 'timeline' | 'chat'>('images');
   const [operating, setOperating] = useState<string | null>(null);
@@ -360,6 +362,7 @@ export function App() {
         <span className={styles.stats}>
           {sessions.length} sessions / {formatBytes(totalSize)} / {totalImages} images
         </span>
+        <button className={styles.helpBtn} onClick={() => setShowHelp(true)} title="Help">?</button>
       </header>
       <Toolbar
         onRefresh={refresh}
@@ -375,6 +378,10 @@ export function App() {
         visible={showBackups}
         onClose={() => setShowBackups(false)}
         onDeleteAll={handleDeleteAllBackups}
+      />
+      <HelpPanel
+        visible={showHelp}
+        onClose={() => setShowHelp(false)}
       />
       {expanded && detail ? (
         <div className={styles.fullPanel}>
