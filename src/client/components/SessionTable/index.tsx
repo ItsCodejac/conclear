@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SizeIndicator } from '../SizeIndicator';
+import { HighlightText } from '../HighlightText';
 import * as CtxMenu from '../ContextMenu';
 import { decodeProjectName, formatRelative } from '../../utils';
 import type { Session, SortField, SortDirection } from '../../types';
@@ -46,12 +47,12 @@ function truncateId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) + '...' : id;
 }
 
-function SessionNameCell({ session }: { session: Session }) {
+function SessionNameCell({ session, query }: { session: Session; query: string }) {
   if (session.name) {
-    return <span>{session.name}</span>;
+    return <span><HighlightText text={session.name} query={query} /></span>;
   }
   if (session.preview) {
-    return <span className={styles.previewName}>{session.preview}</span>;
+    return <span className={styles.previewName}><HighlightText text={session.preview} query={query} /></span>;
   }
   return <span className={styles.uuidFallback}>{truncateId(session.id)}</span>;
 }
@@ -272,6 +273,7 @@ export function SessionTable({ sessions, loading, error, selectedId, onSelect, o
                   onStripAll={onStripAll}
                   onResizeAll={onResizeAll}
                   showToolColumn={showToolColumn}
+                  searchQuery={search.trim()}
                 />
               );
             })}
@@ -295,6 +297,7 @@ interface ProjectGroupRowsProps {
   onStripAll?: (sessionId: string) => void;
   onResizeAll?: (sessionId: string, targetBytes: number) => void;
   showToolColumn: boolean;
+  searchQuery: string;
 }
 
 function ProjectGroupRows({
@@ -310,6 +313,7 @@ function ProjectGroupRows({
   onStripAll,
   onResizeAll,
   showToolColumn,
+  searchQuery,
 }: ProjectGroupRowsProps) {
   const colCount = showToolColumn ? 6 : 5;
   return (
@@ -317,7 +321,7 @@ function ProjectGroupRows({
       <tr className={styles.groupHeader} onClick={onToggle}>
         <td colSpan={colCount} className={styles.groupHeaderCell}>
           <span className={styles.groupToggle}>{isCollapsed ? '\u25b8' : '\u25be'}</span>
-          <span className={styles.groupName}>{group.displayName}</span>
+          <span className={styles.groupName}><HighlightText text={group.displayName} query={searchQuery} /></span>
           <span className={styles.groupStats}>
             {group.sessions.length} session{group.sessions.length !== 1 ? 's' : ''}
             {' \u00b7 '}
@@ -353,8 +357,8 @@ function ProjectGroupRows({
                 onClick={() => onSelect(s.id)}
                 onDoubleClick={() => onExpand(s.id)}
               >
-                <td className={styles.nameCell}><SessionNameCell session={s} /></td>
-                <td className={styles.projectCell}>{decodeProjectName(s.project)}</td>
+                <td className={styles.nameCell}><SessionNameCell session={s} query={searchQuery} /></td>
+                <td className={styles.projectCell}><HighlightText text={decodeProjectName(s.project)} query={searchQuery} /></td>
                 {showToolColumn && <td className={styles.toolCell}>{s.tool}</td>}
                 <td>{formatDate(s.lastActiveAt)}</td>
                 <td>

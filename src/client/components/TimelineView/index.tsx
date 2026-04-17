@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { TimelineEvent, TimelineEventType } from '../../types';
 import { formatTime } from '../../utils';
+import { HighlightText } from '../HighlightText';
 import styles from './styles.module.css';
 
 interface TimelineViewProps {
@@ -120,7 +121,7 @@ export function TimelineView({ sessionId }: TimelineViewProps) {
             <span className={`${styles.typeLabel} ${styles[`type_${evt.type}`] || ''}`}>
               {TYPE_LABELS[evt.type]}
             </span>
-            <span className={styles.summary}>{evt.summary}</span>
+            <span className={styles.summary}><HighlightText text={evt.summary} query={filter} /></span>
             {evt.durationMs && (
               <span className={styles.duration}>{durationStr(evt.durationMs)}</span>
             )}

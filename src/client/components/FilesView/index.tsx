@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { FileHistory, FileVersion } from '../../types';
 import { formatTime } from '../../utils';
+import { HighlightText } from '../HighlightText';
 import styles from './styles.module.css';
 import hljs from 'highlight.js/lib/core';
 import typescript from 'highlight.js/lib/languages/typescript';
@@ -477,8 +478,8 @@ export function FilesView({ sessionId }: FilesViewProps) {
                 className={isExpanded ? styles.fileItemActive : styles.fileItem}
                 onClick={() => toggleFile(file.filePath)}
               >
-                <div className={styles.fileName}>{baseName(file.filePath)}</div>
-                <div className={styles.fileDir}>{dirPath(file.filePath)}</div>
+                <div className={styles.fileName}><HighlightText text={baseName(file.filePath)} query={filter} /></div>
+                <div className={styles.fileDir}><HighlightText text={dirPath(file.filePath)} query={filter} /></div>
                 <div className={styles.fileMeta}>
                   <span>{vCount} version{vCount !== 1 ? 's' : ''}</span>
                   {opFilter === 'all' && counts.read > 0 && <span className={`${styles.opCount} ${styles.opRead}`}>{counts.read} read</span>}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ChatMessage } from '../../types';
 import { formatTime } from '../../utils';
+import { HighlightText } from '../HighlightText';
 import styles from './styles.module.css';
 
 interface ConversationViewProps {
@@ -13,7 +14,7 @@ function timeStr(ts?: string): string {
   return formatTime(ts);
 }
 
-function MessageBubble({ msg, onImageClick }: { msg: ChatMessage; onImageClick?: (id: string) => void }) {
+function MessageBubble({ msg, onImageClick, searchQuery }: { msg: ChatMessage; onImageClick?: (id: string) => void; searchQuery: string }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = msg.text.length > 300;
 
@@ -44,7 +45,7 @@ function MessageBubble({ msg, onImageClick }: { msg: ChatMessage; onImageClick?:
             className={expanded || !isLong ? styles.msgText : styles.msgTextCollapsed}
             onClick={() => isLong && setExpanded(!expanded)}
           >
-            {msg.text}
+            <HighlightText text={msg.text} query={searchQuery} />
           </div>
           {isLong && !expanded && (
             <button className={styles.expandBtn} onClick={() => setExpanded(true)}>
@@ -114,7 +115,7 @@ export function ConversationView({ sessionId, onImageClick }: ConversationViewPr
       </div>
       <div className={styles.messages} ref={listRef}>
         {filtered.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} onImageClick={onImageClick} />
+          <MessageBubble key={msg.id} msg={msg} onImageClick={onImageClick} searchQuery={filter} />
         ))}
         {filtered.length === 0 && (
           <div className={styles.empty}>
