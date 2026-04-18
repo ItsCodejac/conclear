@@ -11,16 +11,9 @@ import {
 import { access, copyFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
+import { cursorDbPath } from '../paths.js';
 
-const CURSOR_DB_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'Cursor',
-  'User',
-  'globalStorage',
-  'state.vscdb',
-);
+const CURSOR_DB_PATH = cursorDbPath();
 const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(dbPath: string): Promise<string> {

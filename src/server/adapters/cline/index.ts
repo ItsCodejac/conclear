@@ -12,16 +12,10 @@ import {
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
+import { vscodeGlobalStorage } from '../paths.js';
 
 /** Both Cline and Roo Code use the same directory structure under VS Code globalStorage */
-const VSCODE_GLOBAL_STORAGE = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'Code',
-  'User',
-  'globalStorage',
-);
+const VSCODE_GLOBAL_STORAGE = vscodeGlobalStorage();
 
 const SOURCE_DIRS: Array<{ path: string; label: string }> = [
   { path: join(VSCODE_GLOBAL_STORAGE, 'saoudrizwan.claude-dev', 'tasks'), label: 'Cline' },

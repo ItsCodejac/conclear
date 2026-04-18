@@ -12,14 +12,9 @@ import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir }
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 
-const VSCODE_STORAGE_DIR = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'Code',
-  'User',
-  'workspaceStorage',
-);
+import { vscodeWorkspaceStorage } from '../paths.js';
+
+const VSCODE_STORAGE_DIR = vscodeWorkspaceStorage();
 const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(filePath: string): Promise<string> {
