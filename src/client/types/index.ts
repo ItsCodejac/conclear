@@ -79,6 +79,17 @@ export interface SecretFinding {
   severity: 'high' | 'medium' | 'low';
 }
 
+export interface SearchResult {
+  sessionId: string;
+  sessionName: string | null;
+  project: string;
+  tool: string;
+  timestamp?: string;
+  role: 'user' | 'assistant';
+  text: string;
+  lineNumber: number;
+}
+
 export type SortField = 'name' | 'project' | 'tool' | 'lastActiveAt' | 'totalSizeBytes' | 'imageCount';
 export type SortDirection = 'asc' | 'desc';
 

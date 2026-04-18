@@ -93,6 +93,17 @@ export interface SecretFinding {
   severity: 'high' | 'medium' | 'low';
 }
 
+export interface SearchResult {
+  sessionId: string;
+  sessionName: string | null;
+  project: string;
+  tool: string;
+  timestamp?: string;
+  role: 'user' | 'assistant';
+  text: string;        // matched text with context (~200 chars, match highlighted with **bold**)
+  lineNumber: number;
+}
+
 export interface Adapter {
   name: string;
   detect(): Promise<boolean>;

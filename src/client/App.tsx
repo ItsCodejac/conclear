@@ -9,6 +9,7 @@ import { FilesView } from './components/FilesView';
 import { BackupManager } from './components/BackupManager';
 import { ScanResults } from './components/ScanResults';
 import { HelpPanel } from './components/HelpPanel';
+import { GlobalSearch } from './components/GlobalSearch';
 import { DiskUsage } from './components/DiskUsage';
 import { ConfirmDialog, type ConfirmDialogProps } from './components/ConfirmDialog';
 import { ToastContainer, useToast } from './components/Toast';
@@ -42,6 +43,7 @@ export function App() {
   const [showBackups, setShowBackups] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [detailTab, setDetailTab] = useState<'images' | 'timeline' | 'chat' | 'files'>('images');
   const [operating, setOperating] = useState<string | null>(null);
@@ -365,6 +367,12 @@ export function App() {
     }
   }, [selectedId, toast]);
 
+  const handleSearchSelect = useCallback((sessionId: string, tab?: 'chat') => {
+    selectSession(sessionId);
+    setExpanded(true);
+    if (tab) setDetailTab(tab);
+  }, [selectSession]);
+
   const expandSession = useCallback((id: string) => {
     // The single-click handler (onClick) already fires and starts loading.
     // We just need to flag expanded=true. The render condition is `expanded && detail`,
@@ -378,7 +386,8 @@ export function App() {
 
   useKeyboard({
     onRefresh: refresh,
-    onEscape: expanded ? collapseSession : undefined,
+    onEscape: showSearch ? () => setShowSearch(false) : expanded ? collapseSession : undefined,
+    onSearch: () => setShowSearch(true),
   });
 
   const totalSize = sessions.reduce((s, x) => s + x.totalSizeBytes, 0);
@@ -561,6 +570,11 @@ export function App() {
           }
         />
       )}
+      <GlobalSearch
+        visible={showSearch}
+        onClose={() => setShowSearch(false)}
+        onSelect={handleSearchSelect}
+      />
       {confirm && (
         <ConfirmDialog
           title={confirm.title}
