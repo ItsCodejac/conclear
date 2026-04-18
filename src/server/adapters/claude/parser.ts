@@ -1646,7 +1646,31 @@ export async function getFileContent(filePath: string, lineNumber: number): Prom
       try {
         const parsed = JSON.parse(line) as Record<string, unknown>;
 
-        // Check assistant tool_use blocks for Edit old_string/new_string or Write content
+        // Priority 1: toolUseResult.file.content — full file content after an operation
+        if (parsed.toolUseResult && typeof parsed.toolUseResult === 'object') {
+          const tr = parsed.toolUseResult as Record<string, unknown>;
+          // file.content has the complete file after the operation
+          if (tr.file && typeof tr.file === 'object') {
+            const file = tr.file as Record<string, unknown>;
+            if (typeof file.content === 'string' && file.content.length > 0) {
+              return file.content;
+            }
+          }
+          // originalFile has the file before an edit
+          if (typeof tr.originalFile === 'string' && tr.originalFile.length > 0) {
+            return tr.originalFile;
+          }
+          // Inline content (for some formats)
+          if (typeof tr.content === 'string' && tr.content.length > 100) {
+            return tr.content;
+          }
+          // Edit diff from toolUseResult
+          if (tr.oldString || tr.newString) {
+            return `--- old ---\n${tr.oldString || ''}\n--- new ---\n${tr.newString || ''}`;
+          }
+        }
+
+        // Priority 2: assistant tool_use blocks (Edit old/new, Write content)
         if (parsed.message && typeof parsed.message === 'object') {
           const message = parsed.message as Record<string, unknown>;
           if (Array.isArray(message.content)) {
@@ -1668,7 +1692,7 @@ export async function getFileContent(filePath: string, lineNumber: number): Prom
                 }
               }
 
-              // tool_result blocks in user messages
+              // Priority 3: tool_result text — but skip short confirmation messages
               if (b.type === 'tool_result') {
                 let resultText = '';
                 if (typeof b.content === 'string') {
@@ -1680,19 +1704,11 @@ export async function getFileContent(filePath: string, lineNumber: number): Prom
                     }
                   }
                 }
-                if (resultText.length > 0) return resultText;
+                // Only return tool_result text if it looks like actual file content (>100 chars)
+                // Skip short confirmation messages like "File edited successfully"
+                if (resultText.length > 100) return resultText;
               }
             }
-          }
-        }
-
-        // Top-level toolUseResult
-        if (parsed.toolUseResult && typeof parsed.toolUseResult === 'object') {
-          const tr = parsed.toolUseResult as Record<string, unknown>;
-          if (typeof tr.content === 'string') return tr.content;
-          if (typeof tr.originalFile === 'string') return tr.originalFile;
-          if (tr.oldString || tr.newString) {
-            return `--- old ---\n${tr.oldString || ''}\n--- new ---\n${tr.newString || ''}`;
           }
         }
       } catch {
