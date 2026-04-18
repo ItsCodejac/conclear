@@ -397,6 +397,9 @@ export function App() {
     <div className={styles.app}>
       <header className={styles.header}>
         <span className={styles.title}>ConClear</span>
+        <button className={styles.searchBtn} onClick={() => setShowSearch(true)} title="Global search (Cmd+K)">
+          Search All  <kbd className={styles.kbd}>⌘K</kbd>
+        </button>
         <span className={styles.stats}>
           {sessions.length} sessions / {formatBytes(totalSize)} / {totalImages} images
         </span>
