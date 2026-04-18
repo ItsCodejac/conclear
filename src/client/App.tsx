@@ -7,6 +7,7 @@ import { ConversationView } from './components/ConversationView';
 import { TimelineView } from './components/TimelineView';
 import { FilesView } from './components/FilesView';
 import { BackupManager } from './components/BackupManager';
+import { ScanResults } from './components/ScanResults';
 import { HelpPanel } from './components/HelpPanel';
 import { DiskUsage } from './components/DiskUsage';
 import { ConfirmDialog, type ConfirmDialogProps } from './components/ConfirmDialog';
@@ -39,6 +40,7 @@ export function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [strippedIds, setStrippedIds] = useState<Set<string>>(new Set());
   const [showBackups, setShowBackups] = useState(false);
+  const [showScan, setShowScan] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [detailTab, setDetailTab] = useState<'images' | 'timeline' | 'chat' | 'files'>('images');
@@ -398,6 +400,7 @@ export function App() {
         onClearStripped={strippedIds.size > 0 ? clearStripped : undefined}
         onShowBackups={() => setShowBackups(true)}
         onExport={selectedId ? handleExport : undefined}
+        onScan={selectedId ? () => setShowScan(true) : undefined}
         strippedCount={strippedIds.size}
         sessionName={detail?.name ?? detail?.preview ?? detail?.id ?? null}
         operating={operating}
@@ -406,6 +409,11 @@ export function App() {
         visible={showBackups}
         onClose={() => setShowBackups(false)}
         onDeleteAll={handleDeleteAllBackups}
+      />
+      <ScanResults
+        visible={showScan}
+        sessionId={selectedId}
+        onClose={() => setShowScan(false)}
       />
       <HelpPanel
         visible={showHelp}

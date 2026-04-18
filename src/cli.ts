@@ -15,7 +15,7 @@
  *   conclear --ui     — starts the web UI
  */
 
-const QUERY_COMMANDS = new Set(['search', 'files', 'sessions', 'summary', 'context', 'export']);
+const QUERY_COMMANDS = new Set(['search', 'files', 'sessions', 'summary', 'context', 'export', 'scan']);
 const META_COMMANDS = new Set(['mcp']);
 
 function printHelp(): void {
@@ -39,6 +39,9 @@ QUERY COMMANDS (no server needed):
 
   conclear export <session-name-or-id> [--output <file>] [--format md|txt]
     Export session as a clean markdown document
+
+  conclear scan <session-name-or-id> [--json]
+    Scan session for potential secrets, API keys, and credentials
 
 MCP SERVER:
   conclear mcp           Start the MCP server (stdio transport, for AI agents)
@@ -75,7 +78,7 @@ async function main(): Promise<void> {
 
   // Query commands — import handler module, run directly (no server)
   if (command && QUERY_COMMANDS.has(command)) {
-    const { cmdSearch, cmdFiles, cmdSessions, cmdSummary, cmdContext, cmdExport } = await import('./cli-query.js');
+    const { cmdSearch, cmdFiles, cmdSessions, cmdSummary, cmdContext, cmdExport, cmdScan } = await import('./cli-query.js');
     const cmdArgs = args.slice(1);
 
     switch (command) {
@@ -85,6 +88,7 @@ async function main(): Promise<void> {
       case 'summary':  await cmdSummary(cmdArgs); break;
       case 'context':  await cmdContext(cmdArgs); break;
       case 'export':   await cmdExport(cmdArgs); break;
+      case 'scan':     await cmdScan(cmdArgs); break;
     }
     return;
   }

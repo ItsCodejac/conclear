@@ -142,6 +142,25 @@ router.get('/sessions/:id/files/:lineNumber', async (req: Request, res: Response
   }
 });
 
+router.get('/sessions/:id/scan', async (req: Request, res: Response) => {
+  try {
+    for (const adapter of adapters) {
+      if (await adapter.detect()) {
+        try {
+          const findings = await (adapter as any).scanSecrets(param(req, 'id'));
+          res.json(findings);
+          return;
+        } catch {
+          // try next adapter
+        }
+      }
+    }
+    res.status(404).json({ error: 'Session not found' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get('/sessions/:id/export', async (req: Request, res: Response) => {
   try {
     for (const adapter of adapters) {

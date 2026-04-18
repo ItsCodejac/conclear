@@ -1,4 +1,4 @@
-import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileVersion, FileHistory } from '../types.js';
+import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileVersion, FileHistory, SecretFinding } from '../types.js';
 import { readFile, writeFile, stat } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
@@ -1464,6 +1464,167 @@ function formatExportTime(ts: string): string {
   if (isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ── Secret scanning ─────────────────────────────────────────────────────────
+
+/** Redact a secret value: show first 4 and last 4 chars with **** in between. */
+function redactSecret(value: string): string {
+  if (value.length <= 8) return '****';
+  return value.slice(0, 4) + '****' + value.slice(-4);
+}
+
+/** Extract a redacted context window around a match position in text. */
+function extractContext(text: string, matchStart: number, matchEnd: number, secret: string): string {
+  const windowSize = 40;
+  const start = Math.max(0, matchStart - windowSize);
+  const end = Math.min(text.length, matchEnd + windowSize);
+  let ctx = text.slice(start, end).replace(/\n/g, ' ').trim();
+  // Replace the actual secret within the context with the redacted version
+  ctx = ctx.replace(secret, redactSecret(secret));
+  if (start > 0) ctx = '...' + ctx;
+  if (end < text.length) ctx = ctx + '...';
+  // Truncate overall if still too long
+  if (ctx.length > 120) ctx = ctx.slice(0, 117) + '...';
+  return ctx;
+}
+
+interface SecretPattern {
+  type: string;
+  severity: 'high' | 'medium' | 'low';
+  regex: RegExp;
+  /** For patterns that need a nearby keyword context (e.g. AWS secret keys) */
+  nearbyKeyword?: RegExp;
+}
+
+const SECRET_PATTERNS: SecretPattern[] = [
+  // --- High severity ---
+  { type: 'api_key', severity: 'high', regex: /sk-(?:proj-|ant-)?[a-zA-Z0-9]{20,}/g },
+  { type: 'aws_key', severity: 'high', regex: /AKIA[A-Z0-9]{16}/g },
+  { type: 'aws_secret', severity: 'high', regex: /[A-Za-z0-9/+=]{40}/g, nearbyKeyword: /aws_secret|AWS_SECRET/i },
+  { type: 'private_key', severity: 'high', regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
+  { type: 'github_token', severity: 'high', regex: /(?:ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36,}|ghs_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,})/g },
+  { type: 'bearer_token', severity: 'high', regex: /Bearer [a-zA-Z0-9._-]{20,}/g },
+
+  // --- Medium severity ---
+  { type: 'env_credential', severity: 'medium', regex: /(?:PASSWORD|SECRET|TOKEN|API_KEY)\s*=\s*\S+/gi },
+  { type: 'database_url', severity: 'medium', regex: /(?:postgres|mysql|mongodb):\/\/[^\s"']+:[^\s"']+@[^\s"']+/g },
+  { type: 'webhook_token', severity: 'medium', regex: /https:\/\/[^\s"']*(?:hooks|webhook)[^\s"']*\/[a-zA-Z0-9_-]{20,}/gi },
+
+  // --- Low severity ---
+  { type: 'env_file', severity: 'low', regex: /(?:read|write|load|cat|source)\s+[^\s]*\.env\b/gi },
+  { type: 'sensitive_path', severity: 'low', regex: /(?:\/|\\)(?:credentials|secrets|keys)(?:\/|\\)/gi },
+];
+
+/** Extract all text content from a parsed JSONL line for scanning. */
+function extractScanText(parsed: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  const message = parsed.message as Record<string, unknown> | undefined;
+  if (message?.content) {
+    const content = message.content;
+    if (typeof content === 'string') {
+      parts.push(content);
+    } else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (typeof block === 'object' && block !== null) {
+          const b = block as Record<string, unknown>;
+          if (b.type === 'text' && typeof b.text === 'string') {
+            parts.push(b.text);
+          } else if (b.type === 'tool_use' && typeof b.input === 'object' && b.input !== null) {
+            // Scan tool inputs (commands, file contents, etc.)
+            parts.push(JSON.stringify(b.input));
+          } else if (b.type === 'tool_result') {
+            if (typeof b.content === 'string') {
+              parts.push(b.content);
+            } else if (Array.isArray(b.content)) {
+              for (const c of b.content) {
+                if (typeof c === 'object' && c !== null && (c as Record<string, unknown>).type === 'text') {
+                  parts.push((c as Record<string, unknown>).text as string || '');
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Top-level toolUseResult
+  if (parsed.toolUseResult && typeof parsed.toolUseResult === 'object') {
+    parts.push(JSON.stringify(parsed.toolUseResult));
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Scan a JSONL session file for potential secrets, API keys, and credentials.
+ * Streams through the file line-by-line for efficiency.
+ */
+export async function scanForSecrets(filePath: string): Promise<SecretFinding[]> {
+  const findings: SecretFinding[] = [];
+  const seen = new Set<string>(); // deduplicate by type+redacted pattern
+
+  const rl = createInterface({
+    input: createReadStream(filePath, { encoding: 'utf-8' }),
+    crlfDelay: Infinity,
+  });
+
+  let lineIdx = 0;
+  for await (const line of rl) {
+    if (!line.trim()) { lineIdx++; continue; }
+
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const timestamp = parsed.timestamp as string | undefined;
+      const text = extractScanText(parsed);
+      if (!text) { lineIdx++; continue; }
+
+      for (const pattern of SECRET_PATTERNS) {
+        // Reset the regex lastIndex for each line
+        pattern.regex.lastIndex = 0;
+
+        let match: RegExpExecArray | null;
+        while ((match = pattern.regex.exec(text)) !== null) {
+          const matchedStr = match[0];
+
+          // For aws_secret, require the nearby keyword within 200 chars
+          if (pattern.nearbyKeyword) {
+            const windowStart = Math.max(0, match.index - 200);
+            const windowEnd = Math.min(text.length, match.index + matchedStr.length + 200);
+            const window = text.slice(windowStart, windowEnd);
+            if (!pattern.nearbyKeyword.test(window)) continue;
+          }
+
+          const redacted = redactSecret(matchedStr);
+          const dedupeKey = `${pattern.type}:${redacted}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+
+          const context = extractContext(text, match.index, match.index + matchedStr.length, matchedStr);
+
+          findings.push({
+            type: pattern.type,
+            pattern: redacted,
+            context,
+            lineNumber: lineIdx + 1,
+            timestamp,
+            severity: pattern.severity,
+          });
+        }
+      }
+    } catch {
+      // skip unparseable lines
+    }
+    lineIdx++;
+  }
+
+  // Sort by severity: high first, then medium, then low
+  const severityOrder = { high: 0, medium: 1, low: 2 };
+  findings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+  return findings;
 }
 
 /**

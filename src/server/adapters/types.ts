@@ -84,6 +84,15 @@ export interface FileHistory {
   versions: FileVersion[];
 }
 
+export interface SecretFinding {
+  type: string;        // e.g. "api_key", "bearer_token", "aws_key", "env_file", "private_key"
+  pattern: string;     // what matched (redacted -- show first 4 and last 4 chars only)
+  context: string;     // surrounding text (truncated, redacted)
+  lineNumber: number;  // JSONL line
+  timestamp?: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
 export interface Adapter {
   name: string;
   detect(): Promise<boolean>;

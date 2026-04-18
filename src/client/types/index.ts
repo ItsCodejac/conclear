@@ -70,6 +70,15 @@ export interface FileHistory {
   versions: FileVersion[];
 }
 
+export interface SecretFinding {
+  type: string;
+  pattern: string;
+  context: string;
+  lineNumber: number;
+  timestamp?: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
 export type SortField = 'name' | 'project' | 'tool' | 'lastActiveAt' | 'totalSizeBytes' | 'imageCount';
 export type SortDirection = 'asc' | 'desc';
 
