@@ -1,0 +1,8 @@
+[book]
+title = "ConClear Documentation"
+authors = ["Cojac"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"

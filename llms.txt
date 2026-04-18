@@ -1,0 +1,1441 @@
+# ConClear
+
+> ConClear is a visual utility and CLI for managing AI coding tool session data. It reads session files from Claude Code, Cursor, Gemini CLI, Cline/Roo Code, and GitHub Copilot, giving you a unified view of your AI coding history.
+
+## Full Documentation
+
+## Introduction
+
+ConClear is a visual utility and CLI for managing AI coding tool session data. It reads session files from Claude Code, Cursor, Gemini CLI, Cline/Roo Code, and GitHub Copilot, giving you a unified view of your AI coding history.
+
+### The Problem
+
+Every time you paste a screenshot into an AI coding tool, that image data stays in the session file forever. Sessions grow to 50MB, 100MB, or more. Eventually you hit errors like:
+
+```
+An image in the conversation exceeds the dimension limit for many-image requests (2000px).
+Run /compact to remove old images from context, or start a new session.
+```
+
+ConClear gives you a better option than `/compact` or starting over.
+
+### What ConClear Does
+
+- **Session browsing** -- scan all your AI tool data and see exactly what's taking space.
+- **Image cleanup** -- preview every screenshot in a session. Strip them (replace with a tiny placeholder), resize them, or leave them alone. Per-image or in bulk.
+- **File version history** -- every file your AI tool read, edited, or wrote is tracked. Browse versions, view with syntax highlighting, compare diffs, copy code.
+- **Conversation replay** -- read past sessions with clean formatting. Search, filter by role, export as markdown.
+- **Timeline** -- event log of everything that happened: edits, bash commands, file reads, errors.
+- **Secret scanning** -- detect API keys, tokens, and credentials that may have leaked into session data.
+- **CLI query interface** -- search sessions, recover files, and dump context from the terminal without starting the server.
+- **MCP server** -- expose session history to AI agents via the Model Context Protocol.
+
+### Privacy
+
+ConClear runs entirely on your local machine. No data is sent anywhere. The server reads session files directly from disk and serves them to the React frontend on `localhost`.
+
+## Getting Started
+
+ConClear runs as a local Node.js application. It requires Node.js 22 or later.
+
+There are three ways to use ConClear:
+
+1. **Web UI** -- a visual session browser that runs a local server and opens in your browser.
+2. **CLI** -- query commands that run directly without a server.
+3. **MCP server** -- an stdio-based server that AI agents can use to query your session history.
+
+ConClear auto-detects which AI tools you have installed by checking their standard data directories. No configuration is needed.
+
+## Installation
+
+### Requirements
+
+- Node.js 22.0.0 or later
+
+### Install globally via npm
+
+```bash
+npm install -g conclear
+```
+
+### Run without installing
+
+```bash
+npx conclear
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/ItsCodejac/conclear
+cd conclear
+npm install
+npm run build
+npm start
+```
+
+### Development mode
+
+```bash
+npm run dev
+```
+
+This starts both the Vite dev server (for the React frontend with hot reload) and the Express backend via `tsx watch`.
+
+## Quick Start
+
+### Launch the Web UI
+
+```bash
+conclear
+```
+
+This starts a local server on port 3789 and opens your browser to `http://localhost:3789`. ConClear scans all detected AI tool data directories and displays your sessions.
+
+### Try the CLI
+
+List your recent sessions:
+
+```bash
+conclear sessions
+```
+
+Search across all sessions:
+
+```bash
+conclear search "auth middleware"
+```
+
+Get a session summary:
+
+```bash
+conclear summary my-session-name
+```
+
+All CLI commands work without the web server -- they read session files directly.
+
+### Set up the MCP server
+
+Add ConClear to your Claude Code MCP configuration so AI agents can query your session history:
+
+```json
+{
+  "mcpServers": {
+    "conclear": {
+      "command": "npx",
+      "args": ["conclear", "mcp"]
+    }
+  }
+}
+```
+
+## Web UI
+
+The ConClear web UI is a React application served by a local Express server on port 3789. Launch it with:
+
+```bash
+conclear
+```
+
+### Layout
+
+The UI uses a pane layout with two main areas:
+
+- **Left pane** -- session list with search, sort, and filter controls.
+- **Right pane** -- detail view with tabs for the selected session.
+
+Double-click a session to expand it to full-panel mode. Press Escape to return to the split view.
+
+### Tabs
+
+When you select a session, the detail pane shows these tabs:
+
+| Tab | Content |
+|-----|---------|
+| Images | Thumbnails of all images in the session, with strip/resize controls |
+| Timeline | Chronological event log of all operations |
+| Chat | Conversation replay with user/assistant messages |
+| Files | File version history with syntax-highlighted viewer |
+
+### Context Menu
+
+Right-click a session to access:
+
+- Strip all images
+- Resize all images
+- Copy resume command
+- Export as markdown
+- Scan for secrets
+
+### Toolbar
+
+The toolbar at the top of the detail pane shows:
+
+- Session name and metadata (message count, image count, total size)
+- Tab switcher
+- Action buttons for the current tab
+- Help button (`?`)
+
+## Session Browser
+
+The session browser is the left pane of the web UI. It lists all detected sessions across all supported AI tools.
+
+### Session List
+
+Each session row displays:
+
+- **Name** -- the session's custom name (if set) or a preview of the first user message.
+- **Tool icon** -- which AI tool created the session (Claude, Cursor, Gemini, Cline, Copilot).
+- **Project** -- the project directory associated with the session.
+- **Timestamp** -- when the session was last active.
+- **Size indicator** -- visual indicator of session size, color-coded by how large it is.
+- **Image count** -- number of images embedded in the session.
+- **Warning icon** -- amber icon if the session contains oversized images that could trigger dimension limit errors.
+
+### Search
+
+Press `/` to focus the search bar. Search filters sessions by name, preview text, and project name. Clear the search with Escape.
+
+### Navigation
+
+- `Up` / `Down` arrow keys navigate the session list.
+- `Enter` selects the highlighted session.
+- Click a session to select it.
+- Double-click to expand to full-panel view.
+
+### Sorting
+
+Sessions are sorted by most recently active by default.
+
+### Refresh
+
+Press `Cmd+R` (macOS) or `Ctrl+R` to refresh the session list. The server re-scans all data directories and uses mtime-based caching to only re-parse changed files.
+
+## Images Tab
+
+The Images tab shows all images embedded in the selected session. Each image is displayed as a thumbnail with metadata.
+
+### Image Details
+
+For each image, you can see:
+
+- **Thumbnail preview** -- loaded on demand to avoid fetching all image data at once.
+- **Size** -- the base64-encoded size in the session file.
+- **Media type** -- e.g., `image/png`, `image/jpeg`.
+- **Context** -- where in the conversation the image appears.
+- **Timestamp** -- when the image was shared (if available).
+
+### Image Actions
+
+Click an image thumbnail to open it in a lightbox at full resolution. Press Escape to close.
+
+#### Per-Image Actions
+
+- **Strip** -- replace the image with a tiny 1x1 pixel placeholder. The session file is rewritten with the base64 data removed.
+- **Resize** -- shrink the image to a target file size using the resize menu.
+
+#### Bulk Actions
+
+- **Strip All** -- strip every image in the session at once.
+- **Resize All** -- resize all images to a target size.
+
+Both bulk operations create a backup before modifying the session file.
+
+### Oversized Image Detection
+
+Images that exceed the 2000px dimension limit are flagged. ConClear detects these proactively so you can fix them before hitting the error during a session.
+
+## Timeline Tab
+
+The Timeline tab shows a chronological event log of everything that happened during a session.
+
+### Event Types
+
+| Type | Description |
+|------|-------------|
+| `user` | User message |
+| `assistant` | Assistant text response |
+| `edit` | File edit operation |
+| `read` | File read operation |
+| `write` | File write operation |
+| `bash` | Shell command execution |
+| `search` | Grep or glob search |
+| `agent` | Subagent spawn |
+| `image` | Screenshot or image shared |
+| `error` | Failed operation |
+
+### Event Details
+
+Each event shows:
+
+- **Type badge** -- color-coded by event type.
+- **Timestamp** -- when the event occurred.
+- **Summary** -- one-line description (file path, command snippet, or first line of text).
+- **Detail** -- expandable area with full content: complete text, command output, diff, etc.
+- **File path** -- for file operations, the path that was read/edited/written.
+- **Exit code** -- for bash commands, the process exit code.
+- **Duration** -- for timed operations, how long they took.
+
+### Filtering
+
+Filter events by type using the toolbar controls. You can show/hide specific event types to focus on what matters -- for example, show only file edits, or only bash commands.
+
+### Search
+
+Search within the timeline to find specific events by content.
+
+## Chat Tab
+
+The Chat tab provides a conversation replay view for the selected session. It displays user and assistant messages with clean formatting.
+
+### Message Display
+
+Messages are rendered with:
+
+- **Role indicator** -- user or assistant, visually distinguished.
+- **Timestamp** -- when the message was sent.
+- **Text content** -- the message body. Tool use results and internal protocol messages are filtered out for readability.
+- **Image indicator** -- if the message includes an image, it is noted (and can be viewed in the Images tab).
+
+### Full Panel Mode
+
+Double-click the session or use the expand control to open the chat in full-panel mode, giving the conversation the full width of the window.
+
+### Search
+
+Search within the conversation to find specific messages. Matches are highlighted.
+
+### Filtering
+
+Filter messages by role (user only, assistant only, or both) to focus on specific parts of the conversation.
+
+### Export
+
+Export the conversation as a markdown document from the context menu or the toolbar. The export includes all user and assistant messages with timestamps and clean formatting.
+
+## Files Tab
+
+The Files tab shows all files that were read, edited, or written during a session, with full version history.
+
+### File List
+
+Each file entry shows:
+
+- **File path** -- the full path of the file.
+- **Version count** -- how many times the file was touched during the session.
+- **Operations** -- which operations were performed (read, edit, write).
+- **Last modified** -- timestamp of the most recent version.
+
+### Version History
+
+Click a file to see all its versions. Each version shows:
+
+- **Operation type** -- read, edit, or write.
+- **Timestamp** -- when this version was captured.
+- **Line count** and **size** -- dimensions of the file content.
+- **Content preview** -- first 200 characters.
+
+### Code Viewer
+
+Click a version to open it in the code viewer with:
+
+- **Syntax highlighting** -- powered by highlight.js, supporting all major languages.
+- **Line numbers** -- for easy reference.
+- **Copy button** -- copy the full file content to clipboard.
+
+### File Recovery
+
+The Files tab is useful for recovering lost code. If a file was edited or overwritten, you can browse to any previous version and copy its content.
+
+## Disk Usage
+
+ConClear tracks the disk usage of each session and provides visual indicators to help you identify which sessions are consuming the most space.
+
+### Size Indicator
+
+Each session in the browser shows a size indicator that is color-coded:
+
+- **Green** -- small session, nothing to worry about.
+- **Yellow** -- moderate size, may contain images worth reviewing.
+- **Red** -- large session, likely bloated with image data.
+
+### Session Detail
+
+When you select a session, the toolbar shows:
+
+- **Total size** -- the full size of the session file on disk.
+- **Image size** -- how much of that total is image data (base64-encoded).
+- **Tool result size** -- size of tool use results (command output, file contents, etc.).
+- **Message count** -- total number of messages in the session.
+- **Image count** -- number of embedded images.
+
+### Identifying Bloat
+
+The difference between total size and image size tells you how much of the session is actual conversation vs. image data. Sessions where images account for more than 50% of the total size are good candidates for cleanup.
+
+### Backup Management
+
+After strip or resize operations, backups are stored in `~/.conclear/backups/`. The backup manager (accessible from the UI) lets you view, restore from, or delete old backups.
+
+## CLI
+
+ConClear includes a command-line interface for querying session history without starting the web server. All CLI commands read session files directly from disk.
+
+```bash
+conclear --help
+```
+
+### Command Categories
+
+#### Query Commands (no server needed)
+
+These commands run standalone -- they read session data directly:
+
+- `search` -- full-text search across sessions
+- `files` -- find file versions from past sessions
+- `sessions` -- list all indexed sessions
+- `summary` -- get a session overview
+- `context` -- dump clean conversation text
+- `export` -- export session as markdown
+- `scan` -- scan for potential secrets
+
+#### MCP Server
+
+- `mcp` -- start the MCP server (stdio transport)
+
+#### UI Launcher
+
+- `conclear` (no arguments) -- start the web UI
+- `conclear --ui` -- start the web UI
+
+### Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output structured JSON (works on all query commands) |
+| `--help`, `-h` | Show help |
+
+### Session Resolution
+
+All commands that take a session identifier support flexible matching:
+
+1. Exact session ID (UUID)
+2. Partial ID prefix
+3. Exact session name (case-insensitive)
+4. Partial name match
+5. Preview text match
+
+When multiple sessions match, the most recently active one is returned.
+
+## CLI Commands
+
+### conclear search
+
+Full-text search across all session messages.
+
+```bash
+conclear search <query> [--project <name>] [--limit <n>] [--json]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--project <name>` | Filter to sessions whose project name contains this string |
+| `--limit <n>` | Maximum results to return (default: 10) |
+| `--json` | Output as JSON |
+
+Output includes session name, timestamp, role (user/assistant), and a text snippet around the match.
+
+### conclear files
+
+Find file versions matching a path pattern across sessions.
+
+```bash
+conclear files <path-pattern> [--session <name-or-id>] [--latest] [--json]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--session <name-or-id>` | Restrict search to a specific session |
+| `--latest` | Include the content of the latest version |
+| `--json` | Output as JSON |
+
+The path pattern supports `*` and `**` glob syntax. When `--latest` is used with a single matching file, the content is written to stdout for piping.
+
+### conclear sessions
+
+List all indexed sessions, sorted by most recently active.
+
+```bash
+conclear sessions [--project <name>] [--limit <n>] [--json]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--project <name>` | Filter by project name |
+| `--limit <n>` | Maximum sessions to show (default: 20) |
+| `--json` | Output as JSON |
+
+Table output shows: name, project, last active date, message count, image count, and size.
+
+### conclear summary
+
+Quick summary of a specific session.
+
+```bash
+conclear summary <session-name-or-id> [--json]
+```
+
+Output includes:
+- Session metadata (ID, name, project, dates)
+- Message and image counts
+- File size
+- List of files touched (up to 20)
+- Key user messages (up to 5)
+
+### conclear context
+
+Dump clean conversation text from a session. Includes only user and assistant messages -- no tool results or protocol noise.
+
+```bash
+conclear context <session-name-or-id> [--json]
+```
+
+Useful for piping session context into other tools:
+
+```bash
+conclear context my-session | head -200
+```
+
+### conclear export
+
+Export a session as a clean markdown or text document.
+
+```bash
+conclear export <session-name-or-id> [--output <file>] [--format md|txt]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--output <file>`, `-o <file>` | Write to file instead of stdout |
+| `--format md\|txt` | Output format (default: `md`) |
+
+The `txt` format strips markdown syntax (headings, bold, code fences) for plain text output.
+
+### conclear scan
+
+Scan a session for potential secrets, API keys, and credentials.
+
+```bash
+conclear scan <session-name-or-id> [--json]
+```
+
+Output groups findings by severity (high, medium, low) and shows:
+- Type (e.g., `api_key`, `bearer_token`, `aws_key`)
+- Redacted pattern (first 4 and last 4 characters)
+- Surrounding context
+- Line number in the session file
+
+## CLI Examples
+
+### Search for a past discussion
+
+```bash
+conclear search "auth middleware" --project myapp --limit 5
+```
+
+### Find and recover a file version
+
+```bash
+# List all versions of a file across sessions
+conclear files "api.ts"
+
+# Get the latest version from a specific session
+conclear files "api.ts" --session veesty-rebuild-plan --latest
+
+# Pipe the content directly into a new file
+conclear files "api.ts" --session veesty-rebuild-plan --latest > recovered.ts
+```
+
+### Review recent sessions
+
+```bash
+# List the 10 most recent sessions
+conclear sessions --limit 10
+
+# Filter by project
+conclear sessions --project ConClear
+```
+
+### Get a session summary
+
+```bash
+conclear summary veesty-rebuild-plan
+```
+
+### Export a session for reference
+
+```bash
+# Export as markdown
+conclear export my-session --output session.md
+
+# Export as plain text
+conclear export my-session --output session.txt --format txt
+```
+
+### Pipe context into current work
+
+```bash
+# Get the last 200 lines of conversation
+conclear context my-session | head -200
+
+# Use with AI tools that accept stdin
+conclear context my-session | pbcopy
+```
+
+### Scan for leaked secrets
+
+```bash
+# Human-readable output
+conclear scan my-session
+
+# JSON for programmatic use
+conclear scan my-session --json
+```
+
+### JSON output for scripting
+
+All commands support `--json` for structured output:
+
+```bash
+# Get session list as JSON
+conclear sessions --json | jq '.[0].id'
+
+# Search with JSON output
+conclear search "database migration" --json | jq '.[] | .text'
+```
+
+## MCP Server
+
+ConClear runs as an MCP (Model Context Protocol) server so AI agents can query your session history through tool use. It uses stdio transport, the standard for Claude Code MCP servers.
+
+### Starting the Server
+
+```bash
+conclear mcp
+```
+
+The server runs until the process is killed. It logs to stderr so it doesn't interfere with the MCP stdio protocol on stdout.
+
+### Configuration
+
+Add ConClear to your Claude Code MCP settings (in `~/.claude/settings.json` or project-level `.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "conclear": {
+      "command": "npx",
+      "args": ["conclear", "mcp"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+#### conclear_search
+
+Search messages across all sessions by text query.
+
+**Inputs:**
+- `query` (string, required) -- text to search for
+- `project` (string, optional) -- filter by project name
+- `limit` (number, optional) -- max results (default: 20, max: 100)
+
+**Returns:** JSON array of matches with `sessionId`, `sessionName`, `project`, `timestamp`, `role`, `text`.
+
+#### conclear_sessions
+
+List available sessions, sorted by most recently active.
+
+**Inputs:**
+- `project` (string, optional) -- filter by project name
+- `limit` (number, optional) -- max sessions (default: 20, max: 100)
+
+**Returns:** JSON array of sessions with `id`, `name`, `preview`, `project`, `lastActive`, `messageCount`, `imageCount`, `size`.
+
+#### conclear_summary
+
+Get a summary of a specific session including files touched and key user messages.
+
+**Inputs:**
+- `session` (string, required) -- session name, ID, or partial match
+
+**Returns:** JSON object with session metadata, files touched, and key user messages.
+
+#### conclear_file_content
+
+Get a specific file version from a session.
+
+**Inputs:**
+- `session` (string, required) -- session name, ID, or partial match
+- `file_path` (string, required) -- file path or partial path to find
+- `version` (number, optional) -- version index (0-based, defaults to latest)
+
+**Returns:** JSON object with file path, version info, and content. If multiple files match, lists matches instead.
+
+#### conclear_context
+
+Get clean conversation text from a session (user and assistant messages only).
+
+**Inputs:**
+- `session` (string, required) -- session name, ID, or partial match
+- `limit` (number, optional) -- return only the last N messages
+
+**Returns:** JSON array of messages with `role`, `timestamp`, `text`. Total output is capped at 100KB.
+
+### Tool Annotations
+
+All MCP tools are annotated as read-only, non-destructive, and idempotent. They do not modify session data.
+
+## Operations
+
+ConClear provides several operations for managing session data. All destructive operations create a timestamped backup before modifying any files.
+
+### Safety
+
+Before any operation that modifies a session file:
+
+1. A backup is created in `~/.conclear/backups/`.
+2. The backup is verified by comparing file sizes.
+3. Only then is the original file modified.
+
+Backups can be managed from the web UI's backup manager or by directly accessing the backup directory.
+
+## Strip Images
+
+Stripping replaces image data in a session file with a tiny 1x1 pixel placeholder. The image metadata (position, media type) is preserved, but the large base64 payload is removed.
+
+### From the Web UI
+
+1. Select a session and open the **Images** tab.
+2. To strip individual images: click the strip button on each image.
+3. To strip all images: right-click the session and select "Strip all images", or use the bulk action in the toolbar.
+4. Confirm the operation in the dialog.
+
+A backup is created automatically before any modification.
+
+### From the API
+
+The server exposes a POST endpoint:
+
+```
+POST /api/sessions/:id/strip
+Content-Type: application/json
+
+{
+  "imageIds": ["img-0", "img-1"]  // optional; omit to strip all
+}
+```
+
+**Response:**
+
+```json
+{
+  "backupPath": "/Users/you/.conclear/backups/session_backup_2024-01-15T10-30-00-000Z",
+  "bytesReclaimed": 4521984
+}
+```
+
+### How It Works
+
+The strip operation reads the session file, finds image content blocks (identified by `type: "image"` with `source.type: "base64"`), and replaces the base64 data with a minimal 1x1 pixel PNG. The file is rewritten in place.
+
+For Claude Code sessions (JSONL format), each line is processed independently. For JSON-based formats (Gemini, Cline, Copilot), the entire JSON structure is modified and rewritten.
+
+## Resize Images
+
+Resizing shrinks images to a target file size while preserving visual content. This is a less aggressive alternative to stripping -- the images remain viewable but take less space.
+
+### From the Web UI
+
+1. Select a session and open the **Images** tab.
+2. Click the resize button on individual images, or use the bulk resize action.
+3. Choose a target size from the resize menu.
+4. Confirm the operation.
+
+### From the API
+
+```
+POST /api/sessions/:id/resize
+Content-Type: application/json
+
+{
+  "imageIds": ["img-0", "img-1"],  // optional; omit to resize all
+  "targetBytes": 102400             // target size per image (min 1024)
+}
+```
+
+**Response:**
+
+```json
+{
+  "backupPath": "/Users/you/.conclear/backups/session_backup_2024-01-15T10-30-00-000Z",
+  "bytesReclaimed": 2150400
+}
+```
+
+### How It Works
+
+Resize uses the `sharp` library to:
+
+1. Decode the base64 image data.
+2. Progressively reduce dimensions and quality until the output is at or below the target byte size.
+3. Re-encode as the original media type (or JPEG for lossy compression).
+4. Replace the base64 data in the session file.
+
+A backup is always created before modification.
+
+## File Recovery
+
+AI coding tools record every file they read, edit, or write during a session. ConClear indexes this data so you can recover previous versions of any file.
+
+### From the Web UI
+
+1. Select a session and open the **Files** tab.
+2. Browse the list of files touched during the session.
+3. Click a file to see all its versions.
+4. Click a version to open it in the syntax-highlighted code viewer.
+5. Use the copy button to copy the content to your clipboard.
+
+### From the CLI
+
+```bash
+# Find all versions of a file across all sessions
+conclear files "api.ts"
+
+# Find versions in a specific session
+conclear files "api.ts" --session my-session
+
+# Get the latest version content
+conclear files "api.ts" --session my-session --latest
+
+# Pipe directly to a file for recovery
+conclear files "api.ts" --session my-session --latest > recovered-api.ts
+```
+
+### From the MCP Server
+
+Use the `conclear_file_content` tool:
+
+```json
+{
+  "session": "my-session",
+  "file_path": "api.ts",
+  "version": 0
+}
+```
+
+The `version` parameter is 0-indexed. Omit it to get the latest version.
+
+### What Gets Tracked
+
+| Operation | Description |
+|-----------|-------------|
+| `read` | File was read by the AI tool (content at time of read) |
+| `edit` | File was modified (content after edit) |
+| `write` | New file was created (full content) |
+
+Not all adapters support full file history. Currently, the Claude Code adapter provides the most complete file tracking.
+
+## Secret Scanning
+
+ConClear can scan session data for potential secrets, API keys, and credentials that may have been inadvertently captured during AI coding sessions.
+
+### From the CLI
+
+```bash
+conclear scan my-session
+```
+
+Output groups findings by severity and shows the type, a redacted pattern, and surrounding context.
+
+```bash
+# JSON output for programmatic use
+conclear scan my-session --json
+```
+
+### From the Web UI
+
+Right-click a session and select "Scan for secrets". Results are displayed in the scan results panel.
+
+### From the API
+
+```
+GET /api/sessions/:id/scan
+```
+
+### Finding Types
+
+| Type | Severity | Description |
+|------|----------|-------------|
+| `api_key` | high | Generic API key patterns |
+| `bearer_token` | high | Bearer authentication tokens |
+| `aws_key` | high | AWS access key IDs and secret keys |
+| `private_key` | high | PEM-encoded private keys |
+| `env_file` | medium | Environment variable assignments with sensitive names |
+
+### Redaction
+
+All findings are redacted in the output -- only the first 4 and last 4 characters of matched patterns are shown. This prevents the scanner itself from leaking secrets.
+
+### Limitations
+
+The scanner uses pattern matching and may produce false positives. It is not a substitute for dedicated secret scanning tools like `trufflehog` or `gitleaks`, but provides a quick check for obvious leaks in session data.
+
+## Export
+
+ConClear can export sessions as clean markdown or plain text documents.
+
+### From the CLI
+
+```bash
+# Export as markdown (default)
+conclear export my-session --output session.md
+
+# Export as plain text
+conclear export my-session --output session.txt --format txt
+
+# Write to stdout
+conclear export my-session
+```
+
+### From the Web UI
+
+- Right-click a session and select "Export as markdown".
+- The browser downloads a `.md` file named after the session.
+
+### From the API
+
+```
+GET /api/sessions/:id/export
+```
+
+Returns a markdown file as an attachment download. The `Content-Disposition` header includes a sanitized filename based on the session name.
+
+### Markdown Format
+
+The exported markdown includes:
+
+- Session metadata header (name, project, dates)
+- All user and assistant messages with timestamps
+- Clean formatting with role labels
+- Code blocks preserved
+
+### Plain Text Format
+
+When `--format txt` is used, the exporter strips markdown syntax:
+
+- Heading markers (`#`) are removed
+- Bold markers (`**`) are removed
+- Blockquotes (`>`) become indentation
+- Code fences are removed (code content is preserved)
+
+## Supported Tools
+
+ConClear supports five AI coding tools. Each tool stores session data in a different format and location. ConClear auto-detects which tools are installed by checking their standard data directories.
+
+| Tool | Format | Data Location |
+|------|--------|---------------|
+| Claude Code | JSONL | `~/.claude/projects/` |
+| Gemini CLI | JSON | `~/.gemini/tmp/` |
+| Cursor | SQLite | `~/Library/Application Support/Cursor/` (macOS) |
+| Cline / Roo Code | JSON | VS Code `globalStorage/` |
+| GitHub Copilot | JSON | VS Code `workspaceStorage/` |
+
+### Detection
+
+On startup, ConClear checks each tool's data directory. If the directory exists, that adapter is activated and its sessions are included in the unified session list.
+
+No configuration is needed. If you install a new tool later, ConClear will pick it up automatically on the next scan.
+
+### Cross-Platform Paths
+
+ConClear resolves data directories based on the current platform:
+
+| Platform | VS Code / Cursor base |
+|----------|-----------------------|
+| macOS | `~/Library/Application Support/<app>/` |
+| Windows | `%APPDATA%/<app>/` |
+| Linux | `~/.config/<app>/` |
+
+## Claude Code
+
+### Data Format
+
+Claude Code stores sessions as JSONL (JSON Lines) files. Each line is a self-contained JSON object representing a message or event.
+
+### Data Location
+
+```
+~/.claude/projects/<project-dir>/<session-id>.jsonl
+```
+
+Project directories are named with an encoded path, e.g., `-Volumes-4tbCache--Projects-ConClear`.
+
+Session metadata (including custom names set via `/resume`) is stored separately:
+
+```
+~/.claude/sessions/<session-id>.json
+```
+
+### Session Structure
+
+Each JSONL line has a `type` field:
+
+- `user` -- user message
+- `assistant` -- assistant response
+- `result` -- tool result
+
+Messages contain a `message` object with `role` and `content`. Content can be a string or an array of content blocks:
+
+- `text` blocks -- plain text
+- `image` blocks -- base64-encoded images with `source.type: "base64"`
+- `tool_use` blocks -- tool invocations
+- `tool_result` blocks -- tool outputs
+
+### Features Supported
+
+- Full session listing with metadata
+- Image preview, strip, resize, and restore
+- Conversation replay
+- Timeline event extraction
+- File version history with content recovery
+- Secret scanning
+- Markdown export
+- Mtime-based caching for fast re-scans
+
+### Session Name Resolution
+
+ConClear cross-references JSONL filenames with `~/.claude/sessions/*.json` metadata files to display custom session names set via Claude Code's `/resume` command.
+
+## Cursor
+
+### Data Format
+
+Cursor stores conversation data in a SQLite database (`state.vscdb`) within its application data directory.
+
+### Data Location
+
+```
+# macOS
+~/Library/Application Support/Cursor/User/globalStorage/state.vscdb
+
+# Windows
+%APPDATA%/Cursor/User/globalStorage/state.vscdb
+
+# Linux
+~/.config/Cursor/User/globalStorage/state.vscdb
+```
+
+### Features Supported
+
+- Session listing from database records
+- Image preview, strip, and restore
+- Conversation replay
+- Backup of the database file before modifications
+
+### Notes
+
+Since Cursor uses a single SQLite database rather than individual session files, backups copy the entire database. The adapter reads conversation data from specific database keys and parses the embedded JSON structures.
+
+## Gemini CLI
+
+### Data Format
+
+Gemini CLI stores sessions as JSON files within a project-specific directory structure.
+
+### Data Location
+
+```
+~/.gemini/tmp/<project-hash>/chats/session-<id>.json
+```
+
+Each session file is a complete JSON document containing the full conversation with all messages, tool uses, and embedded images.
+
+### Features Supported
+
+- Session listing with metadata
+- Image preview, strip, and restore
+- Conversation replay
+- Mtime-based caching for fast re-scans
+
+### Detection
+
+ConClear checks for the existence of `~/.gemini/` to determine if Gemini CLI is installed. It then scans all project directories under `~/.gemini/tmp/` for `chats/session-*.json` files.
+
+## Cline & Roo Code
+
+### Data Format
+
+Both Cline and Roo Code use the same directory structure under VS Code's `globalStorage`. Each task (session) has its own directory containing JSON files.
+
+### Data Location
+
+```
+# Cline
+<VS Code globalStorage>/saoudrizwan.claude-dev/tasks/<task-id>/
+
+# Roo Code
+<VS Code globalStorage>/rooveterinaryinc.roo-cline/tasks/<task-id>/
+```
+
+Where VS Code `globalStorage` is:
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/Code/User/globalStorage/` |
+| Windows | `%APPDATA%/Code/User/globalStorage/` |
+| Linux | `~/.config/Code/User/globalStorage/` |
+
+### Features Supported
+
+- Session listing with metadata
+- Image preview, strip, resize, and restore
+- Conversation replay
+
+### Notes
+
+ConClear scans both Cline and Roo Code directories. Sessions from both tools appear in the unified session list, distinguished by their tool label.
+
+## GitHub Copilot
+
+### Data Format
+
+GitHub Copilot Chat stores conversation data as JSON files within VS Code's `workspaceStorage` directory.
+
+### Data Location
+
+```
+<VS Code workspaceStorage>/<workspace-hash>/
+```
+
+Where VS Code `workspaceStorage` is:
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/Code/User/workspaceStorage/` |
+| Windows | `%APPDATA%/Code/User/workspaceStorage/` |
+| Linux | `~/.config/Code/User/workspaceStorage/` |
+
+### Features Supported
+
+- Session listing with metadata
+- Image preview, strip, and restore
+- Conversation replay
+
+### Detection
+
+ConClear scans the workspace storage directory for Copilot chat data files. Sessions are included in the unified list alongside other tools.
+
+## Architecture
+
+ConClear is a full-stack TypeScript application with three main components:
+
+### Components
+
+#### Express Server (`src/server/`)
+
+A local Express 5 server that:
+
+- Serves the REST API on `/api/` routes.
+- In production, serves the built Vite frontend as static files.
+- Runs on port 3789.
+
+#### React Frontend (`src/client/`)
+
+A React 19 single-page application built with Vite. Key components:
+
+| Component | Purpose |
+|-----------|---------|
+| `SessionTable` | Session list with search and navigation |
+| `PaneLayout` | Split-pane layout manager |
+| `ImagePreview` | Image thumbnails and lightbox |
+| `TimelineView` | Chronological event log |
+| `ConversationView` | Chat message replay |
+| `FilesView` | File version browser with code viewer |
+| `DiskUsage` | Size visualization |
+| `Toolbar` | Tab switcher and actions |
+| `ContextMenu` | Right-click menu via Radix UI |
+| `ResizeMenu` | Target size selector for resize operations |
+| `ScanResults` | Secret scanning results display |
+| `BackupManager` | View and manage backups |
+| `ConfirmDialog` | Confirmation for destructive operations |
+| `HelpPanel` | Keyboard shortcuts and help |
+| `Toast` | Notification messages |
+| `SizeIndicator` | Visual size badges |
+| `HighlightText` | Search match highlighting |
+
+#### CLI (`src/cli.ts`, `src/cli-query.ts`)
+
+Zero-dependency CLI that dispatches to query functions or launches the server. Query commands import the Claude adapter directly -- no server needed.
+
+#### MCP Server (`src/mcp-server.ts`)
+
+Stdio-based MCP server using `@modelcontextprotocol/sdk`. Registers five tools for AI agent access.
+
+### Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `express` | HTTP server |
+| `react`, `react-dom` | Frontend UI |
+| `sharp` | Image resizing |
+| `highlight.js` | Syntax highlighting |
+| `@modelcontextprotocol/sdk` | MCP server implementation |
+| `@radix-ui/*` | UI primitives (context menu, tooltip, scroll area, separator) |
+| `zod` | Schema validation (MCP tool inputs) |
+| `open` | Open browser on startup |
+| `vite` | Frontend build tool |
+| `tsx` | TypeScript execution for dev mode |
+
+### Build
+
+```bash
+npm run build
+```
+
+This runs Vite to build the frontend, then `tsc` to compile the server TypeScript. Output goes to `dist/`.
+
+## Adapter Pattern
+
+ConClear uses an adapter pattern to support multiple AI coding tools. Each tool gets its own adapter that implements a common interface.
+
+### The Adapter Interface
+
+Every adapter must implement the `Adapter` interface defined in `src/server/adapters/types.ts`:
+
+```typescript
+interface Adapter {
+  name: string;
+  detect(): Promise<boolean>;
+  listSessions(): Promise<Session[]>;
+  getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getImageData(sessionId: string, imageId: string): Promise<ImageData>;
+  stripImages(sessionId: string, imageIds: string[]): Promise<{ backupPath: string; bytesReclaimed: number }>;
+  stripAllImages(sessionId: string): Promise<{ backupPath: string; bytesReclaimed: number }>;
+  restoreImage(sessionId: string, imageId: string, base64: string, mediaType: string): Promise<void>;
+}
+```
+
+### Adapter Responsibilities
+
+Each adapter handles:
+
+1. **Detection** -- check if the tool's data directory exists.
+2. **Session listing** -- scan the data directory and parse session metadata.
+3. **Session detail** -- parse a specific session for full metadata including image inventory.
+4. **Image operations** -- extract, strip, resize, and restore images in the tool's native format.
+5. **Conversation parsing** -- extract chat messages for the conversation view.
+6. **File history** -- extract file read/edit/write events (where supported).
+
+### Existing Adapters
+
+| Adapter | File | Format |
+|---------|------|--------|
+| `ClaudeAdapter` | `src/server/adapters/claude/` | JSONL line-by-line parsing |
+| `GeminiAdapter` | `src/server/adapters/gemini/` | JSON document parsing |
+| `CursorAdapter` | `src/server/adapters/cursor/` | SQLite database queries |
+| `ClineAdapter` | `src/server/adapters/cline/` | JSON task directory parsing |
+| `CopilotAdapter` | `src/server/adapters/copilot/` | JSON workspace storage parsing |
+
+Each adapter directory contains:
+
+- `index.ts` -- the adapter class implementing the `Adapter` interface.
+- `parser.ts` -- format-specific parsing logic.
+
+### Adding a New Adapter
+
+To add support for a new AI coding tool:
+
+1. Create a new directory under `src/server/adapters/<tool-name>/`.
+2. Create `parser.ts` with format-specific parsing functions.
+3. Create `index.ts` with a class implementing the `Adapter` interface.
+4. Register the adapter in `src/server/routes/sessions.ts` by adding it to the `adapters` array.
+
+The router iterates through all adapters for each request. If an adapter's `detect()` returns `true`, it participates in the session listing and can handle session-specific requests.
+
+### Caching
+
+Adapters use mtime-based caching. Each session file's modification time is tracked, and only files that have changed since the last scan are re-parsed. This makes repeated scans fast even with hundreds of sessions.
+
+### Backup Strategy
+
+All adapters create backups in `~/.conclear/backups/` before modifying session data. Backup filenames include the tool name and a timestamp for identification. Backup integrity is verified by comparing file sizes after the copy.
+
+## Data Formats
+
+### Session
+
+The normalized `Session` type used across all adapters:
+
+```typescript
+interface Session {
+  id: string;                    // unique session identifier
+  name: string | null;           // custom name (e.g., from /resume)
+  preview: string | null;        // first user message preview
+  project: string;               // project directory identifier
+  tool: 'claude' | 'gemini' | 'cursor' | 'cline' | 'copilot';
+  createdAt: number;             // timestamp (ms since epoch)
+  lastActiveAt: number;          // timestamp (ms since epoch)
+  messageCount: number;          // total messages
+  imageCount: number;            // embedded images
+  totalSizeBytes: number;        // session file size
+  imageSizeBytes: number;        // total image data size
+  filePath: string;              // path to session file on disk
+  hasOversizedImages: boolean;   // any image exceeds 2000px
+  maxImageDimension: number;     // largest image dimension
+}
+```
+
+### SessionDetail
+
+Extended session data including the image inventory:
+
+```typescript
+interface SessionDetail extends Session {
+  images: SessionImage[];
+  toolResultSizeBytes: number;
+}
+```
+
+### SessionImage
+
+```typescript
+interface SessionImage {
+  id: string;            // unique image ID within session
+  lineNumber: number;    // position in session file
+  sizeBytes: number;     // base64 data size
+  mediaType: string;     // e.g., "image/png"
+  context: string;       // surrounding message context
+  timestamp?: string;    // when the image was shared
+  preview?: string;      // small thumbnail (loaded on demand)
+}
+```
+
+### ChatMessage
+
+```typescript
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  timestamp?: string;
+  text: string;
+  toolUse?: string;      // tool name if this is a tool use message
+  hasImage: boolean;
+  imageId?: string;
+}
+```
+
+### TimelineEvent
+
+```typescript
+type TimelineEventType =
+  | 'user' | 'assistant' | 'edit' | 'read' | 'write'
+  | 'bash' | 'search' | 'agent' | 'image' | 'error';
+
+interface TimelineEvent {
+  id: string;
+  type: TimelineEventType;
+  timestamp?: string;
+  summary: string;        // one-line description
+  detail?: string;        // expandable full content
+  filePath?: string;      // for file operations
+  exitCode?: number;      // for bash commands
+  imageId?: string;       // for image events
+  durationMs?: number;    // for timed operations
+}
+```
+
+### FileVersion
+
+```typescript
+interface FileVersion {
+  filePath: string;
+  timestamp?: string;
+  operation: 'read' | 'edit' | 'write';
+  contentPreview: string;  // first 200 characters
+  lineCount: number;
+  sizeBytes: number;
+  lineNumber: number;      // position in session file for retrieval
+}
+```
+
+### FileHistory
+
+```typescript
+interface FileHistory {
+  filePath: string;
+  versions: FileVersion[];
+}
+```
+
+### SecretFinding
+
+```typescript
+interface SecretFinding {
+  type: string;          // e.g., "api_key", "bearer_token"
+  pattern: string;       // redacted match (first 4 + last 4 chars)
+  context: string;       // surrounding text (truncated, redacted)
+  lineNumber: number;    // position in session file
+  timestamp?: string;
+  severity: 'high' | 'medium' | 'low';
+}
+```
+
+### REST API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/sessions` | List all sessions |
+| GET | `/api/sessions/:id` | Get session detail |
+| GET | `/api/sessions/:id/conversation` | Get chat messages |
+| GET | `/api/sessions/:id/images/:imageId` | Get image binary data |
+| GET | `/api/sessions/:id/files` | Get file history |
+| GET | `/api/sessions/:id/files/:lineNumber` | Get file content at line |
+| GET | `/api/sessions/:id/scan` | Scan for secrets |
+| GET | `/api/sessions/:id/export` | Export as markdown |
+| POST | `/api/sessions/:id/strip` | Strip images |
+| POST | `/api/sessions/:id/resize` | Resize images |
+| POST | `/api/sessions/:id/restore` | Restore an image |
+| GET | `/api/backups` | List backups |
+| DELETE | `/api/backups/:name` | Delete a backup |
+| DELETE | `/api/backups` | Delete all backups |
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `/` | Focus search bar |
+| `Up` / `Down` | Navigate session list |
+| `Enter` | Select highlighted session |
+| `Escape` | Close panel, lightbox, or clear search |
+| `Cmd+R` / `Ctrl+R` | Refresh session list |
+| Double-click | Expand session to full-panel view |
+| Right-click | Open context menu |
+
+### Context Menu Actions
+
+Right-click a session to access:
+
+| Action | Description |
+|--------|-------------|
+| Strip all images | Remove all image data from the session |
+| Resize all images | Shrink all images to a target size |
+| Copy resume command | Copy the Claude Code `/resume` command for this session |
+| Export as markdown | Download the session as a `.md` file |
+| Scan for secrets | Check for leaked credentials |
+
+### Help Panel
+
+Press `?` or click the help button in the toolbar to open the help panel, which displays all available keyboard shortcuts.
