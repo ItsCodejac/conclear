@@ -94,11 +94,11 @@ async function main(): Promise<void> {
   }
 
   // Default: launch web UI
+  process.env.NODE_ENV = 'production';
   const { startServer, PORT } = await import('./server/index.js');
   const { default: open } = await import('open');
 
   const url = `http://localhost:${PORT}`;
-  process.env.NODE_ENV = 'production';
   console.log('Starting ConClear...');
 
   await startServer();
