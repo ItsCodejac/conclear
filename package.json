@@ -7,7 +7,7 @@
   "author": "Cojac",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ItsCodejac/conclear"
+    "url": "git+https://github.com/ItsCodejac/conclear.git"
   },
   "keywords": [
     "claude",
@@ -24,7 +24,7 @@
     "node": ">=22.0.0"
   },
   "bin": {
-    "conclear": "./dist/cli.js"
+    "conclear": "dist/cli.js"
   },
   "files": [
     "dist",
