@@ -1,0 +1,3 @@
+{"type":"user","timestamp":"2026-05-28T12:53:01.200Z","sessionId":"b020bf71-df1a-4521-b9f5-fc92ce95c0ff","message":{"role":"user","content":"rewrite the README intro to lead with the integration story"}}
+{"type":"assistant","timestamp":"2026-05-28T12:54:01.200Z","sessionId":"b020bf71-df1a-4521-b9f5-fc92ce95c0ff","message":{"role":"assistant","content":[{"type":"text","text":"Drafted:\n\n> Atlas plugs into your existing API surface. Drop the middleware in, point it at your IdP, and your routes get session-aware auth in one line."}]}}
+{"type":"user","timestamp":"2026-05-28T12:56:01.200Z","sessionId":"b020bf71-df1a-4521-b9f5-fc92ce95c0ff","message":{"role":"user","content":"good. ship it"}}

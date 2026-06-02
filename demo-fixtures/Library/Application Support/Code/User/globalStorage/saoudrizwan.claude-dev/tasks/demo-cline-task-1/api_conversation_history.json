@@ -1,0 +1,74 @@
+[
+  {
+    "role": "user",
+    "content": "Add a token-bucket rate limiter to the public REST endpoints in src/server/. 60 req/min per IP, 429 on overflow."
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll read the server entry to see how middleware is wired today."
+      },
+      {
+        "type": "tool_use",
+        "id": "c-1",
+        "name": "read_file",
+        "input": {
+          "path": "src/server/index.ts"
+        }
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "c-1",
+        "content": "import express from 'express';\nimport router from './router.js';\nconst app = express();\napp.use(express.json());\napp.use(router);\napp.listen(3000);\n"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Creating a rate-limit middleware and wiring it into the public router."
+      },
+      {
+        "type": "tool_use",
+        "id": "c-2",
+        "name": "write_to_file",
+        "input": {
+          "path": "src/server/rate-limit.ts",
+          "content": "import type { RequestHandler } from 'express';\n\nconst buckets = new Map<string, { tokens: number; ts: number }>();\nconst CAP = 60;\nconst REFILL_PER_MS = CAP / 60_000;\n\nexport const rateLimit: RequestHandler = (req, res, next) => {\n  const key = req.ip ?? 'unknown';\n  const now = Date.now();\n  const b = buckets.get(key) ?? { tokens: CAP, ts: now };\n  b.tokens = Math.min(CAP, b.tokens + (now - b.ts) * REFILL_PER_MS);\n  b.ts = now;\n  if (b.tokens < 1) return res.status(429).json({ error: 'rate limited' });\n  b.tokens -= 1;\n  buckets.set(key, b);\n  next();\n};\n"
+        }
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "c-3",
+        "name": "replace_in_file",
+        "input": {
+          "path": "src/server/index.ts",
+          "diff": "<<<<<<< SEARCH\napp.use(express.json());\napp.use(router);\n=======\napp.use(express.json());\napp.use(rateLimit);\napp.use(router);\n>>>>>>> REPLACE"
+        }
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Done. 60 req/min/IP, 429 on overflow. Refill is continuous so steady traffic just under the cap goes through cleanly."
+      }
+    ]
+  }
+]

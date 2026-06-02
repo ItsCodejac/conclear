@@ -28,6 +28,7 @@
   },
   "files": [
     "dist",
+    "demo-fixtures",
     "skill.md",
     "README.md",
     "LICENSE"

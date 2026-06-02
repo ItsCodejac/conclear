@@ -54,9 +54,11 @@ MCP SERVER:
 UI LAUNCHER:
   conclear            Start the web UI
   conclear --ui       Start the web UI
+  conclear --demo     Use bundled demo fixtures instead of your real AI session data (great for trying things out, recording videos, etc.)
 
 FLAGS:
   --json              Output structured JSON (works on all query commands)
+  --demo              Read from bundled fixture data (combinable with any command)
   --help, -h          Show this help
 `);
 }
@@ -83,6 +85,34 @@ function parseInstallFlags(args: string[]): { all: boolean; noSkill: boolean; on
   return { all, noSkill, only };
 }
 
+/**
+ * Resolve --demo to a fixture root and export it via env var BEFORE any adapter
+ * module is imported. Adapter path helpers read CONCLEAR_DEMO_ROOT once at load.
+ */
+async function applyDemoFlag(args: string[]): Promise<void> {
+  if (!args.includes('--demo')) return;
+  // Strip the flag so downstream parsers don't see it.
+  const i = args.indexOf('--demo');
+  args.splice(i, 1);
+
+  const { fileURLToPath } = await import('node:url');
+  const { dirname, join } = await import('node:path');
+  const { existsSync } = await import('node:fs');
+  const here = dirname(fileURLToPath(import.meta.url));
+  // dist/cli.js → repo root → demo-fixtures/, or src/cli.ts → repo root in dev.
+  const candidates = [
+    join(here, '..', 'demo-fixtures'),
+    join(here, '..', '..', 'demo-fixtures'),
+  ];
+  const root = candidates.find(existsSync);
+  if (!root) {
+    process.stderr.write('--demo: demo-fixtures directory not found. Reinstall conclear or run `npm run build`.\n');
+    process.exit(1);
+  }
+  process.env.CONCLEAR_DEMO_ROOT = root;
+  process.stderr.write(`Demo mode: reading fixtures from ${root}\n`);
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -90,6 +120,8 @@ async function main(): Promise<void> {
     printHelp();
     return;
   }
+
+  await applyDemoFlag(args);
 
   const command = args[0]?.toLowerCase();
 

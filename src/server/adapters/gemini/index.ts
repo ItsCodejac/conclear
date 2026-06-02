@@ -10,10 +10,10 @@ import {
 } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { homedir } from 'os';
+import { effectiveHome } from '../paths.js';
 import { BACKUP_DIR } from '../constants.js';
 
-const GEMINI_DIR = join(homedir(), '.gemini', 'tmp');
+const GEMINI_DIR = join(effectiveHome(), '.gemini', 'tmp');
 
 async function createBackup(filePath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
@@ -47,7 +47,7 @@ export class GeminiAdapter implements Adapter {
 
   async detect(): Promise<boolean> {
     try {
-      await access(join(homedir(), '.gemini'));
+      await access(join(effectiveHome(), '.gemini'));
       return true;
     } catch {
       return false;

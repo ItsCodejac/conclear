@@ -5,11 +5,11 @@ import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeIma
 import type { SecretFinding } from '../types.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
-import { homedir } from 'os';
+import { effectiveHome } from '../paths.js';
 import { BACKUP_DIR } from '../constants.js';
 
-const CLAUDE_DIR = join(homedir(), '.claude', 'projects');
-const CLAUDE_SESSIONS_DIR = join(homedir(), '.claude', 'sessions');
+const CLAUDE_DIR = join(effectiveHome(), '.claude', 'projects');
+const CLAUDE_SESSIONS_DIR = join(effectiveHome(), '.claude', 'sessions');
 
 async function createBackup(filePath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
