@@ -1,7 +1,5 @@
 import { Router, Request, Response } from 'express';
 import { readdir, stat, unlink } from 'fs/promises';
-import { createReadStream } from 'fs';
-import { createInterface } from 'readline';
 import { join } from 'path';
 import { homedir } from 'os';
 import { ClaudeAdapter } from '../adapters/claude/index.js';
@@ -10,6 +8,7 @@ import { ClineAdapter } from '../adapters/cline/index.js';
 import { CursorAdapter } from '../adapters/cursor/index.js';
 import { CopilotAdapter } from '../adapters/copilot/index.js';
 import type { Adapter, Session, SearchResult } from '../adapters/types.js';
+import { searchSessionFile } from '../search.js';
 
 // Express 5 params can be string | string[]
 function param(req: Request, name: string): string {
@@ -38,119 +37,6 @@ router.get('/sessions', async (_req: Request, res: Response) => {
 });
 
 // ── Global search across all sessions ────────────────────────────────────────
-
-/**
- * Strip system-level XML tags from text so they don't pollute search results.
- */
-function stripSystemTags(input: string): string {
-  return input
-    .replace(/<(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)[^>]*>[\s\S]*?<\/(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)>/gi, '')
-    .trim();
-}
-
-/**
- * Extract plain text from a JSONL message content field.
- */
-function extractMessageText(content: unknown): string {
-  if (typeof content === 'string') return stripSystemTags(content);
-  if (!Array.isArray(content)) return '';
-
-  const parts: string[] = [];
-  for (const block of content) {
-    if (typeof block === 'object' && block !== null) {
-      const b = block as Record<string, unknown>;
-      if (b.type === 'text' && typeof b.text === 'string') {
-        parts.push(b.text);
-      }
-    }
-  }
-  return stripSystemTags(parts.join('\n'));
-}
-
-/**
- * Search a single session JSONL file for a query string.
- * Returns up to maxPerSession results.
- */
-async function searchSessionFile(
-  session: Session,
-  queryLower: string,
-  maxPerSession: number,
-): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
-
-  try {
-    const rl = createInterface({
-      input: createReadStream(session.filePath, { encoding: 'utf-8' }),
-      crlfDelay: Infinity,
-    });
-
-    let lineIdx = 0;
-    for await (const line of rl) {
-      if (results.length >= maxPerSession) {
-        rl.close();
-        break;
-      }
-
-      if (!line.trim()) { lineIdx++; continue; }
-
-      // Fast pre-check: skip lines that don't contain user/assistant messages
-      if (!line.includes('"user"') && !line.includes('"assistant"')) {
-        lineIdx++;
-        continue;
-      }
-
-      // Secondary fast check: does the line contain the query at all? (case-insensitive via lowercase)
-      if (!line.toLowerCase().includes(queryLower)) {
-        lineIdx++;
-        continue;
-      }
-
-      try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        const type = parsed.type as string;
-
-        if (type !== 'user' && type !== 'assistant') { lineIdx++; continue; }
-
-        const message = parsed.message as Record<string, unknown> | undefined;
-        if (!message) { lineIdx++; continue; }
-
-        const role = (message.role as string) === 'assistant' ? 'assistant' : 'user';
-        const text = extractMessageText(message.content);
-        if (!text) { lineIdx++; continue; }
-
-        const textLower = text.toLowerCase();
-        const matchIdx = textLower.indexOf(queryLower);
-        if (matchIdx === -1) { lineIdx++; continue; }
-
-        // Extract ~200 chars of context around the match
-        const contextRadius = 100;
-        const start = Math.max(0, matchIdx - contextRadius);
-        const end = Math.min(text.length, matchIdx + queryLower.length + contextRadius);
-        let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
-        if (start > 0) snippet = '...' + snippet;
-        if (end < text.length) snippet = snippet + '...';
-
-        results.push({
-          sessionId: session.id,
-          sessionName: session.name,
-          project: session.project,
-          tool: session.tool,
-          timestamp: parsed.timestamp as string | undefined,
-          role: role as 'user' | 'assistant',
-          text: snippet,
-          lineNumber: lineIdx,
-        });
-      } catch {
-        // skip unparseable lines
-      }
-      lineIdx++;
-    }
-  } catch {
-    // file read error, skip this session
-  }
-
-  return results;
-}
 
 router.get('/search', async (req: Request, res: Response) => {
   try {

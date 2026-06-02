@@ -1,4 +1,4 @@
-import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType } from '../types.js';
+import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileHistory, FileVersion } from '../types.js';
 import { readFile, stat } from 'fs/promises';
 import sharp from 'sharp';
 
@@ -131,11 +131,21 @@ export async function parseTaskSession(
 
     // Load metadata for name
     let taskName: string | null = null;
+    let usage: Session['usage'] | undefined;
     try {
       const metaRaw = await readFile(metaPath, 'utf-8');
       const meta: TaskMetadata = JSON.parse(metaRaw);
       if (meta.task) {
         taskName = meta.task.length > 80 ? meta.task.slice(0, 77) + '...' : meta.task;
+      }
+      if (meta.tokensIn != null || meta.tokensOut != null || meta.totalCost != null) {
+        usage = {
+          tokensIn: meta.tokensIn,
+          tokensOut: meta.tokensOut,
+          cacheReads: meta.cacheReads,
+          cacheWrites: meta.cacheWrites,
+          totalCostUsd: meta.totalCost,
+        };
       }
     } catch {
       // no metadata file
@@ -217,6 +227,7 @@ export async function parseTaskSession(
       filePath: apiPath,
       hasOversizedImages,
       maxImageDimension,
+      usage,
     };
   } catch {
     return null;
@@ -238,11 +249,21 @@ export async function parseTaskDetail(
     const apiStats = await stat(apiPath);
 
     let taskName: string | null = null;
+    let usage: Session['usage'] | undefined;
     try {
       const metaRaw = await readFile(metaPath, 'utf-8');
       const meta: TaskMetadata = JSON.parse(metaRaw);
       if (meta.task) {
         taskName = meta.task.length > 80 ? meta.task.slice(0, 77) + '...' : meta.task;
+      }
+      if (meta.tokensIn != null || meta.tokensOut != null || meta.totalCost != null) {
+        usage = {
+          tokensIn: meta.tokensIn,
+          tokensOut: meta.tokensOut,
+          cacheReads: meta.cacheReads,
+          cacheWrites: meta.cacheWrites,
+          totalCostUsd: meta.totalCost,
+        };
       }
     } catch {
       // no metadata
@@ -347,6 +368,7 @@ export async function parseTaskDetail(
       filePath: apiPath,
       hasOversizedImages,
       maxImageDimension,
+      usage,
       images,
       toolResultSizeBytes,
     };
@@ -628,6 +650,184 @@ function toolNameToEventType(toolName: string): TimelineEventType {
   if (name.includes('execute') || name.includes('run') || name.includes('bash')) return 'bash';
   if (name.includes('search') || name.includes('grep') || name.includes('glob')) return 'search';
   return 'assistant';
+}
+
+/**
+ * Classify a Cline tool name into a file operation (read / edit / write) or null.
+ */
+function fileOpForTool(toolName: string): 'read' | 'edit' | 'write' | null {
+  const n = toolName.toLowerCase();
+  if (n === 'read_file' || n === 'list_files' || n === 'list_code_definition_names') return 'read';
+  if (n === 'write_to_file' || n === 'new_file') return 'write';
+  if (n === 'replace_in_file' || n.includes('edit') || n.includes('replace')) return 'edit';
+  return null;
+}
+
+/**
+ * Best-effort: pull a file path out of a tool's input. Cline uses `path`;
+ * a few variants (Claude-shaped tools running through Cline) use `file_path`.
+ */
+function filePathOfInput(input: Record<string, unknown> | undefined): string | null {
+  if (!input) return null;
+  if (typeof input.path === 'string') return input.path;
+  if (typeof input.file_path === 'string') return input.file_path;
+  return null;
+}
+
+/**
+ * Best-effort: pull file content out of a tool input (for write-class ops).
+ * Cline write_to_file: input.content. Edit (replace_in_file): input.diff.
+ */
+function contentOfInput(input: Record<string, unknown> | undefined): string | null {
+  if (!input) return null;
+  if (typeof input.content === 'string') return input.content;
+  if (typeof input.diff === 'string') return input.diff;
+  if (typeof input.new_string === 'string') {
+    return `--- old ---\n${input.old_string || ''}\n--- new ---\n${input.new_string}`;
+  }
+  return null;
+}
+
+/**
+ * Parse file history from a Cline / Roo Code task. Storage is a single JSON
+ * array of Anthropic-shaped messages; we use the message index as the version
+ * "lineNumber" since the on-disk JSON has no real line numbers.
+ */
+export async function parseFileHistory(apiPath: string): Promise<FileHistory[]> {
+  const fileVersions = new Map<string, FileVersion[]>();
+  const pendingTools = new Map<string, { operation: 'read' | 'edit' | 'write'; filePath: string }>();
+
+  try {
+    const raw = await readFile(apiPath, 'utf-8');
+    const messages: ApiMessage[] = JSON.parse(raw);
+    if (!Array.isArray(messages)) return [];
+
+    for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
+      const msg = messages[msgIdx];
+      const content = msg.content;
+      if (!Array.isArray(content)) continue;
+
+      for (const block of content) {
+        // Assistant tool_use blocks: discover operation + file path, and capture
+        // write/edit content directly from input.
+        if (block.type === 'tool_use') {
+          const toolName = block.name || '';
+          const op = fileOpForTool(toolName);
+          if (!op) continue;
+
+          const input = block.input || {};
+          const fp = filePathOfInput(input);
+          if (!fp) continue;
+
+          const toolUseId = block.id;
+          if (toolUseId) pendingTools.set(toolUseId, { operation: op, filePath: fp });
+
+          if (op !== 'read') {
+            const c = contentOfInput(input);
+            if (c) {
+              const version: FileVersion = {
+                filePath: fp,
+                operation: op,
+                contentPreview: c.slice(0, 200),
+                lineCount: c.split('\n').length,
+                sizeBytes: Buffer.byteLength(c, 'utf-8'),
+                lineNumber: msgIdx,
+              };
+              if (!fileVersions.has(fp)) fileVersions.set(fp, []);
+              fileVersions.get(fp)!.push(version);
+            }
+          }
+        }
+
+        // User tool_result blocks: pair with pending read to capture file content.
+        if (block.type === 'tool_result') {
+          const toolUseId = block.tool_use_id;
+          const pending = toolUseId ? pendingTools.get(toolUseId) : undefined;
+
+          let resultText = '';
+          if (typeof block.content === 'string') {
+            resultText = block.content;
+          } else if (Array.isArray(block.content)) {
+            for (const c of block.content) {
+              if (typeof c === 'object' && c !== null && (c as unknown as Record<string, unknown>).type === 'text') {
+                resultText += (resultText ? '\n' : '') + ((c as unknown as Record<string, unknown>).text as string || '');
+              }
+            }
+          }
+
+          if (pending && pending.operation === 'read' && resultText.length > 0) {
+            const version: FileVersion = {
+              filePath: pending.filePath,
+              operation: 'read',
+              contentPreview: resultText.slice(0, 200),
+              lineCount: resultText.split('\n').length,
+              sizeBytes: Buffer.byteLength(resultText, 'utf-8'),
+              lineNumber: msgIdx,
+            };
+            if (!fileVersions.has(pending.filePath)) fileVersions.set(pending.filePath, []);
+            fileVersions.get(pending.filePath)!.push(version);
+          }
+
+          if (toolUseId) pendingTools.delete(toolUseId);
+        }
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  const histories: FileHistory[] = [];
+  for (const [fp, versions] of fileVersions) {
+    versions.sort((a, b) => a.lineNumber - b.lineNumber);
+    histories.push({ filePath: fp, versions });
+  }
+  histories.sort((a, b) => b.versions.length - a.versions.length);
+  return histories;
+}
+
+/**
+ * Retrieve the content of a specific file version from a Cline task.
+ * `lineNumber` is the message index produced by parseFileHistory above.
+ */
+export async function getFileContent(apiPath: string, lineNumber: number): Promise<string | null> {
+  try {
+    const raw = await readFile(apiPath, 'utf-8');
+    const messages: ApiMessage[] = JSON.parse(raw);
+    if (!Array.isArray(messages) || lineNumber < 0 || lineNumber >= messages.length) return null;
+
+    const msg = messages[lineNumber];
+    if (!Array.isArray(msg.content)) return null;
+
+    // Assistant write/edit: pull content straight from input.
+    for (const block of msg.content) {
+      if (block.type === 'tool_use') {
+        const op = fileOpForTool(block.name || '');
+        if (op && op !== 'read') {
+          const c = contentOfInput(block.input);
+          if (c) return c;
+        }
+      }
+    }
+
+    // User tool_result: pull text content (read result).
+    for (const block of msg.content) {
+      if (block.type === 'tool_result') {
+        if (typeof block.content === 'string') return block.content;
+        if (Array.isArray(block.content)) {
+          const parts: string[] = [];
+          for (const c of block.content) {
+            if (typeof c === 'object' && c !== null && (c as unknown as Record<string, unknown>).type === 'text') {
+              parts.push((c as unknown as Record<string, unknown>).text as string || '');
+            }
+          }
+          if (parts.length > 0) return parts.join('\n');
+        }
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return null;
 }
 
 export async function parseConversation(apiPath: string): Promise<ClineParsedConversation> {

@@ -1,4 +1,4 @@
-import { Adapter, Session, SessionDetail, ImageData } from '../types.js';
+import { Adapter, Session, SessionDetail, ImageData, FileHistory } from '../types.js';
 import type { ClineParsedConversation } from './parser.js';
 import {
   parseTaskSession,
@@ -8,6 +8,8 @@ import {
   resizeImagesInContent,
   restoreImageInContent,
   parseConversation,
+  parseFileHistory,
+  getFileContent as getFileContentFromFile,
 } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -270,5 +272,15 @@ export class ClineAdapter implements Adapter {
   async getConversation(sessionId: string): Promise<ClineParsedConversation> {
     const { apiPath } = await this.findSession(sessionId);
     return parseConversation(apiPath);
+  }
+
+  async getFileHistory(sessionId: string): Promise<FileHistory[]> {
+    const { apiPath } = await this.findSession(sessionId);
+    return parseFileHistory(apiPath);
+  }
+
+  async getFileContent(sessionId: string, lineNumber: number): Promise<string | null> {
+    const { apiPath } = await this.findSession(sessionId);
+    return getFileContentFromFile(apiPath, lineNumber);
   }
 }

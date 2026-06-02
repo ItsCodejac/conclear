@@ -13,6 +13,14 @@ export interface Session {
   filePath: string;
   hasOversizedImages: boolean;
   maxImageDimension: number;
+  /** Token / cost analytics, when the adapter can compute them. Currently surfaced by Cline / Roo Code. */
+  usage?: {
+    tokensIn?: number;
+    tokensOut?: number;
+    cacheReads?: number;
+    cacheWrites?: number;
+    totalCostUsd?: number;
+  };
 }
 
 export interface SessionImage {

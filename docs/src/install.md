@@ -36,6 +36,8 @@ conclear uninstall
 
 Continue uses a YAML config; rather than ship a YAML parser dependency, ConClear prints the exact snippet to paste. Everything else is automated.
 
+**Windsurf note:** `conclear install --windsurf` installs the MCP server fine and lets any Windsurf agent query *other* tools' sessions through ConClear. **Reading Windsurf's own chat history is not currently supported** — Cascade conversations are stored as encrypted protobuf files in `~/.codeium/windsurf/cascade/*.pb`, and decoding them would require reverse-engineering Codeium's encryption. See [What is ConClear?](what-is-conclear.md#known-limitations-latent-capabilities) for the full list of known limitations.
+
 ## Flags
 
 | Flag | Behavior |

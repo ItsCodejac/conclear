@@ -14,12 +14,66 @@ import { createServer } from 'node:http';
 import { z } from 'zod';
 
 import { ClaudeAdapter } from './server/adapters/claude/index.js';
-import { parseConversation, parseFileHistory, getFileContent } from './server/adapters/claude/parser.js';
-import type { Session } from './server/adapters/types.js';
+import { GeminiAdapter } from './server/adapters/gemini/index.js';
+import { ClineAdapter } from './server/adapters/cline/index.js';
+import { CursorAdapter } from './server/adapters/cursor/index.js';
+import { CopilotAdapter } from './server/adapters/copilot/index.js';
+import { searchSessionFile } from './server/search.js';
+import type { Adapter, Session } from './server/adapters/types.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-const adapter = new ClaudeAdapter();
+const adapters: Adapter[] = [
+  new ClaudeAdapter(),
+  new GeminiAdapter(),
+  new ClineAdapter(),
+  new CursorAdapter(),
+  new CopilotAdapter(),
+];
+
+/** Gather sessions from every detected adapter. */
+async function listAllSessions(): Promise<Session[]> {
+  const all: Session[] = [];
+  for (const a of adapters) {
+    try {
+      if (await a.detect()) all.push(...(await a.listSessions()));
+    } catch {
+      // skip failing adapter
+    }
+  }
+  return all;
+}
+
+/**
+ * Find which adapter owns a given session. Returns null if none match.
+ * Tries by session.tool first (free), falls back to detect+getSessionDetail.
+ */
+async function findAdapterFor(session: Session): Promise<Adapter | null> {
+  // Quick path: match by tool field on the session
+  const toolToAdapter: Record<string, string> = {
+    claude: 'Claude Code',
+    gemini: 'Gemini CLI',
+    cline: 'Cline / Roo Code',
+    cursor: 'Cursor',
+    copilot: 'GitHub Copilot',
+  };
+  const wanted = toolToAdapter[session.tool];
+  for (const a of adapters) {
+    if (a.name === wanted) return a;
+  }
+  // Fallback: try every detected adapter
+  for (const a of adapters) {
+    try {
+      if (await a.detect()) {
+        try {
+          await a.getSessionDetail(session.id);
+          return a;
+        } catch { /* not this one */ }
+      }
+    } catch { /* skip */ }
+  }
+  return null;
+}
 
 function formatDate(ts: number | string | undefined): string {
   if (!ts) return '-';
@@ -41,7 +95,7 @@ function truncate(s: string, max: number): string {
 
 /** Resolve a session by ID, partial ID, name, or partial name — same logic as cli-query.ts */
 async function resolveSession(query: string): Promise<Session | null> {
-  const sessions = await adapter.listSessions();
+  const sessions = await listAllSessions();
   const q = query.toLowerCase();
 
   // Exact ID
@@ -116,84 +170,42 @@ Returns: JSON array of matches with sessionId, sessionName, project, timestamp, 
   },
   async ({ query, project, limit }) => {
     try {
-      const { createReadStream } = await import('fs');
-      const { createInterface } = await import('readline');
-
-      const sessions = await adapter.listSessions();
+      const sessions = await listAllSessions();
       const queryLower = query.toLowerCase();
+      const filtered = project
+        ? sessions.filter(s => s.project.toLowerCase().includes(project.toLowerCase()))
+        : sessions;
 
-      interface SearchResult {
-        sessionId: string;
-        sessionName: string | null;
-        project: string;
-        timestamp: string | undefined;
-        role: string;
-        text: string;
+      const allResults: Awaited<ReturnType<typeof searchSessionFile>> = [];
+      const batchSize = 20;
+      for (let i = 0; i < filtered.length; i += batchSize) {
+        if (allResults.length >= limit) break;
+        const batch = filtered.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          batch.map(s => searchSessionFile(s, queryLower, Math.min(5, limit - allResults.length)))
+        );
+        allResults.push(...batchResults.flat());
       }
 
-      const results: SearchResult[] = [];
+      allResults.sort((a, b) => {
+        if (!a.timestamp && !b.timestamp) return 0;
+        if (!a.timestamp) return 1;
+        if (!b.timestamp) return -1;
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
 
-      for (const session of sessions) {
-        if (project && !session.project.toLowerCase().includes(project.toLowerCase())) continue;
-        if (results.length >= limit) break;
-
-        const rl = createInterface({
-          input: createReadStream(session.filePath, { encoding: 'utf-8' }),
-          crlfDelay: Infinity,
-        });
-
-        for await (const line of rl) {
-          if (results.length >= limit) { rl.close(); break; }
-          if (!line.trim()) continue;
-          if (!line.toLowerCase().includes(queryLower)) continue;
-
-          try {
-            const parsed = JSON.parse(line) as Record<string, unknown>;
-            const type = parsed.type as string;
-            if (type !== 'user' && type !== 'assistant') continue;
-
-            const message = parsed.message as Record<string, unknown> | undefined;
-            if (!message) continue;
-
-            const role = (message.role as string) || type;
-            const content = message.content;
-            let text = '';
-
-            if (typeof content === 'string') {
-              text = content;
-            } else if (Array.isArray(content)) {
-              for (const block of content) {
-                if (typeof block === 'object' && block !== null && (block as Record<string, unknown>).type === 'text') {
-                  text += (text ? '\n' : '') + ((block as Record<string, unknown>).text as string || '');
-                }
-              }
-            }
-
-            if (!text.toLowerCase().includes(queryLower)) continue;
-
-            const matchIdx = text.toLowerCase().indexOf(queryLower);
-            const start = Math.max(0, matchIdx - 80);
-            const end = Math.min(text.length, matchIdx + query.length + 80);
-            let snippet = text.slice(start, end).replace(/\n/g, ' ').trim();
-            if (start > 0) snippet = '...' + snippet;
-            if (end < text.length) snippet = snippet + '...';
-
-            results.push({
-              sessionId: session.id,
-              sessionName: session.name || session.preview,
-              project: decodeProjectDir(session.project),
-              timestamp: parsed.timestamp as string | undefined,
-              role,
-              text: snippet,
-            });
-          } catch {
-            // skip unparseable lines
-          }
-        }
-      }
+      const trimmed = allResults.slice(0, limit).map(r => ({
+        sessionId: r.sessionId,
+        sessionName: r.sessionName,
+        project: decodeProjectDir(r.project),
+        tool: r.tool,
+        timestamp: r.timestamp,
+        role: r.role,
+        text: r.text,
+      }));
 
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(results, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify(trimmed, null, 2) }],
       };
     } catch (error) {
       return {
@@ -229,7 +241,7 @@ Returns: JSON array of sessions with id, name, preview, project, lastActive, mes
   },
   async ({ project, limit }) => {
     try {
-      let sessions = await adapter.listSessions();
+      let sessions = await listAllSessions();
 
       if (project) {
         const pLower = project.toLowerCase();
@@ -244,6 +256,7 @@ Returns: JSON array of sessions with id, name, preview, project, lastActive, mes
         name: s.name,
         preview: s.preview ? truncate(s.preview, 80) : null,
         project: decodeProjectDir(s.project),
+        tool: s.tool,
         lastActive: new Date(s.lastActiveAt).toISOString(),
         messageCount: s.messageCount,
         imageCount: s.imageCount,
@@ -294,20 +307,31 @@ Returns: JSON object with session metadata, files touched, and key user messages
         };
       }
 
-      const conversation = await parseConversation(session.filePath);
-      const fileHistories = await parseFileHistory(session.filePath);
+      const a = await findAdapterFor(session);
+      if (!a) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: No adapter found for session ${session.id}` }],
+        };
+      }
 
-      const userMsgs = conversation.messages
-        .filter(m => m.role === 'user' && m.text.trim().length > 10)
+      // Conversation is implemented by every adapter; file history only by some.
+      const conversation = await (a as any).getConversation(session.id);
+      let filesTouched: string[] = [];
+      try {
+        const fileHistories = await (a as any).getFileHistory?.(session.id);
+        if (Array.isArray(fileHistories)) filesTouched = fileHistories.map((h: any) => h.filePath);
+      } catch { /* adapter doesn't support file history */ }
+
+      const userMsgs = (conversation?.messages ?? [])
+        .filter((m: any) => m.role === 'user' && m.text?.trim().length > 10)
         .slice(0, 8);
-
-      const filesTouched = fileHistories.map(h => h.filePath);
 
       const summary = {
         id: session.id,
         name: session.name,
         preview: session.preview,
         project: decodeProjectDir(session.project),
+        tool: session.tool,
         firstMessage: formatDate(session.createdAt),
         lastMessage: formatDate(session.lastActiveAt),
         messageCount: session.messageCount,
@@ -315,7 +339,8 @@ Returns: JSON object with session metadata, files touched, and key user messages
         size: session.totalSizeBytes,
         filesTouched: filesTouched.length,
         files: filesTouched.slice(0, 30),
-        keyMessages: userMsgs.map(m => ({
+        fileHistorySupported: filesTouched.length > 0 || (a as any).getFileHistory !== undefined,
+        keyMessages: userMsgs.map((m: any) => ({
           timestamp: formatDate(m.timestamp),
           text: truncate(m.text, 200),
         })),
@@ -369,7 +394,18 @@ Returns: JSON object with file path, version info, and content. If multiple file
         };
       }
 
-      const fileHistories = await parseFileHistory(session.filePath);
+      const a = await findAdapterFor(session);
+      if (!a) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: No adapter found for session ${session.id}` }],
+        };
+      }
+      if (typeof (a as any).getFileHistory !== 'function') {
+        return {
+          content: [{ type: 'text' as const, text: `File history is not yet supported for ${session.tool} sessions. Currently only Claude Code sessions expose file versions.` }],
+        };
+      }
+      const fileHistories = await (a as any).getFileHistory(session.id) as Array<{ filePath: string; versions: Array<{ lineNumber: number; lineCount: number; operation: string; timestamp?: string }> }>;
       const pathLower = file_path.toLowerCase();
 
       // Find matching file histories
@@ -409,7 +445,9 @@ Returns: JSON object with file path, version info, and content. If multiple file
       }
 
       const ver = fileHistory.versions[versionIdx];
-      const content = await getFileContent(session.filePath, ver.lineNumber);
+      const content = typeof (a as any).getFileContent === 'function'
+        ? await (a as any).getFileContent(session.id, ver.lineNumber)
+        : null;
 
       const result = {
         filePath: fileHistory.filePath,
@@ -465,18 +503,24 @@ Returns: JSON array of messages with role, timestamp, and text.`,
         };
       }
 
-      const conversation = await parseConversation(session.filePath);
+      const a = await findAdapterFor(session);
+      if (!a) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: No adapter found for session ${session.id}` }],
+        };
+      }
+      const conversation = await (a as any).getConversation(session.id);
 
       // Filter to user/assistant text only, no tool results
-      let messages = conversation.messages.filter(m =>
-        (m.role === 'user' || m.role === 'assistant') && m.text.trim().length > 0 && !m.toolUse
+      let messages = (conversation?.messages ?? []).filter((m: any) =>
+        (m.role === 'user' || m.role === 'assistant') && m.text?.trim().length > 0 && !m.toolUse
       );
 
       if (limit) {
         messages = messages.slice(-limit);
       }
 
-      const data = messages.map(m => ({
+      const data = messages.map((m: any) => ({
         role: m.role,
         timestamp: m.timestamp,
         text: truncate(m.text, 4000),

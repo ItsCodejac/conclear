@@ -63,6 +63,8 @@ ConClear auto-detects which tools you have installed and scans their session dir
 
 Separately, ConClear can be **installed as an MCP server** into 11 AI clients (Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Google Antigravity, Zed, Cline, Continue, Codex CLI, Kiro CLI) — see [Install into AI clients](#install-into-ai-clients) below.
 
+For an honest map of *everything* ConClear can do today — including emergent uses agents have discovered and known limitations — see [docs/src/what-is-conclear.md](docs/src/what-is-conclear.md).
+
 ## CLI
 
 Query your session history from the terminal — no server needed. Useful for quick lookups and for AI agents that need context from past sessions.
