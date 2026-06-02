@@ -13,8 +13,8 @@ import {
 } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { homedir } from 'os';
 import { vscodeGlobalStorage } from '../paths.js';
+import { BACKUP_DIR } from '../constants.js';
 
 /** Both Cline and Roo Code use the same directory structure under VS Code globalStorage */
 const VSCODE_GLOBAL_STORAGE = vscodeGlobalStorage();
@@ -23,8 +23,6 @@ const SOURCE_DIRS: Array<{ path: string; label: string }> = [
   { path: join(VSCODE_GLOBAL_STORAGE, 'saoudrizwan.claude-dev', 'tasks'), label: 'Cline' },
   { path: join(VSCODE_GLOBAL_STORAGE, 'rooveterinaryinc.roo-cline', 'tasks'), label: 'Roo Code' },
 ];
-
-const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(filePath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
@@ -68,6 +66,9 @@ async function getAvailableSources(): Promise<Array<{ path: string; label: strin
 
 export class ClineAdapter implements Adapter {
   name = 'Cline / Roo Code';
+
+  clearCache(): void { sessionCache.clear(); sessionFileMap.clear(); }
+
 
   async detect(): Promise<boolean> {
     const sources = await getAvailableSources();

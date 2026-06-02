@@ -13,67 +13,9 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { z } from 'zod';
 
-import { ClaudeAdapter } from './server/adapters/claude/index.js';
-import { GeminiAdapter } from './server/adapters/gemini/index.js';
-import { ClineAdapter } from './server/adapters/cline/index.js';
-import { CursorAdapter } from './server/adapters/cursor/index.js';
-import { CopilotAdapter } from './server/adapters/copilot/index.js';
-import { searchSessionFile } from './server/search.js';
-import type { Adapter, Session } from './server/adapters/types.js';
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-const adapters: Adapter[] = [
-  new ClaudeAdapter(),
-  new GeminiAdapter(),
-  new ClineAdapter(),
-  new CursorAdapter(),
-  new CopilotAdapter(),
-];
-
-/** Gather sessions from every detected adapter. */
-async function listAllSessions(): Promise<Session[]> {
-  const all: Session[] = [];
-  for (const a of adapters) {
-    try {
-      if (await a.detect()) all.push(...(await a.listSessions()));
-    } catch {
-      // skip failing adapter
-    }
-  }
-  return all;
-}
-
-/**
- * Find which adapter owns a given session. Returns null if none match.
- * Tries by session.tool first (free), falls back to detect+getSessionDetail.
- */
-async function findAdapterFor(session: Session): Promise<Adapter | null> {
-  // Quick path: match by tool field on the session
-  const toolToAdapter: Record<string, string> = {
-    claude: 'Claude Code',
-    gemini: 'Gemini CLI',
-    cline: 'Cline / Roo Code',
-    cursor: 'Cursor',
-    copilot: 'GitHub Copilot',
-  };
-  const wanted = toolToAdapter[session.tool];
-  for (const a of adapters) {
-    if (a.name === wanted) return a;
-  }
-  // Fallback: try every detected adapter
-  for (const a of adapters) {
-    try {
-      if (await a.detect()) {
-        try {
-          await a.getSessionDetail(session.id);
-          return a;
-        } catch { /* not this one */ }
-      }
-    } catch { /* skip */ }
-  }
-  return null;
-}
+import { searchAllAdapters } from './server/search.js';
+import { listAllSessions, findAdapterFor, resolveSession as resolveSessionShared } from './server/adapters/registry.js';
+import type { Session } from './server/adapters/types.js';
 
 function formatDate(ts: number | string | undefined): string {
   if (!ts) return '-';
@@ -93,45 +35,7 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 3) + '...';
 }
 
-/** Resolve a session by ID, partial ID, name, or partial name — same logic as cli-query.ts */
-async function resolveSession(query: string): Promise<Session | null> {
-  const sessions = await listAllSessions();
-  const q = query.toLowerCase();
-
-  // Exact ID
-  let match = sessions.find(s => s.id === query);
-  if (match) return match;
-
-  // Partial ID prefix
-  const idMatches = sessions.filter(s => s.id.toLowerCase().startsWith(q));
-  if (idMatches.length === 1) return idMatches[0];
-
-  // Exact name (case-insensitive)
-  match = sessions.find(s => s.name?.toLowerCase() === q);
-  if (match) return match;
-
-  // Partial name
-  const nameMatches = sessions.filter(s => s.name?.toLowerCase().includes(q));
-  if (nameMatches.length === 1) return nameMatches[0];
-
-  // Preview fallback
-  const previewMatches = sessions.filter(s => s.preview?.toLowerCase().includes(q));
-  if (previewMatches.length === 1) return previewMatches[0];
-
-  // Multiple matches — most recent wins
-  const all = [...idMatches, ...nameMatches, ...previewMatches];
-  if (all.length > 0) {
-    const seen = new Set<string>();
-    const deduped: Session[] = [];
-    for (const s of all) {
-      if (!seen.has(s.id)) { seen.add(s.id); deduped.push(s); }
-    }
-    deduped.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-    return deduped[0];
-  }
-
-  return null;
-}
+const resolveSession = resolveSessionShared;
 
 // ── MCP Server ──────────────────────────────────────────────────────────────
 
@@ -170,31 +74,8 @@ Returns: JSON array of matches with sessionId, sessionName, project, timestamp, 
   },
   async ({ query, project, limit }) => {
     try {
-      const sessions = await listAllSessions();
-      const queryLower = query.toLowerCase();
-      const filtered = project
-        ? sessions.filter(s => s.project.toLowerCase().includes(project.toLowerCase()))
-        : sessions;
-
-      const allResults: Awaited<ReturnType<typeof searchSessionFile>> = [];
-      const batchSize = 20;
-      for (let i = 0; i < filtered.length; i += batchSize) {
-        if (allResults.length >= limit) break;
-        const batch = filtered.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map(s => searchSessionFile(s, queryLower, Math.min(5, limit - allResults.length)))
-        );
-        allResults.push(...batchResults.flat());
-      }
-
-      allResults.sort((a, b) => {
-        if (!a.timestamp && !b.timestamp) return 0;
-        if (!a.timestamp) return 1;
-        if (!b.timestamp) return -1;
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      });
-
-      const trimmed = allResults.slice(0, limit).map(r => ({
+      const results = await searchAllAdapters(query, limit, project);
+      const data = results.map(r => ({
         sessionId: r.sessionId,
         sessionName: r.sessionName,
         project: decodeProjectDir(r.project),
@@ -203,9 +84,8 @@ Returns: JSON array of matches with sessionId, sessionName, project, timestamp, 
         role: r.role,
         text: r.text,
       }));
-
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(trimmed, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
       };
     } catch (error) {
       return {
@@ -315,15 +195,17 @@ Returns: JSON object with session metadata, files touched, and key user messages
       }
 
       // Conversation is implemented by every adapter; file history only by some.
-      const conversation = await (a as any).getConversation(session.id);
+      const conversation = await a.getConversation(session.id);
       let filesTouched: string[] = [];
-      try {
-        const fileHistories = await (a as any).getFileHistory?.(session.id);
-        if (Array.isArray(fileHistories)) filesTouched = fileHistories.map((h: any) => h.filePath);
-      } catch { /* adapter doesn't support file history */ }
+      if (a.getFileHistory) {
+        try {
+          const fileHistories = await a.getFileHistory(session.id);
+          filesTouched = fileHistories.map(h => h.filePath);
+        } catch { /* fall through */ }
+      }
 
       const userMsgs = (conversation?.messages ?? [])
-        .filter((m: any) => m.role === 'user' && m.text?.trim().length > 10)
+        .filter(m => m.role === 'user' && m.text?.trim().length > 10)
         .slice(0, 8);
 
       const summary = {
@@ -339,8 +221,8 @@ Returns: JSON object with session metadata, files touched, and key user messages
         size: session.totalSizeBytes,
         filesTouched: filesTouched.length,
         files: filesTouched.slice(0, 30),
-        fileHistorySupported: filesTouched.length > 0 || (a as any).getFileHistory !== undefined,
-        keyMessages: userMsgs.map((m: any) => ({
+        fileHistorySupported: typeof a.getFileHistory === 'function',
+        keyMessages: userMsgs.map(m => ({
           timestamp: formatDate(m.timestamp),
           text: truncate(m.text, 200),
         })),
@@ -400,12 +282,12 @@ Returns: JSON object with file path, version info, and content. If multiple file
           content: [{ type: 'text' as const, text: `Error: No adapter found for session ${session.id}` }],
         };
       }
-      if (typeof (a as any).getFileHistory !== 'function') {
+      if (!a.getFileHistory) {
         return {
-          content: [{ type: 'text' as const, text: `File history is not yet supported for ${session.tool} sessions. Currently only Claude Code sessions expose file versions.` }],
+          content: [{ type: 'text' as const, text: `File history is not yet supported for ${session.tool} sessions. Supported today: Claude Code, Cline / Roo Code.` }],
         };
       }
-      const fileHistories = await (a as any).getFileHistory(session.id) as Array<{ filePath: string; versions: Array<{ lineNumber: number; lineCount: number; operation: string; timestamp?: string }> }>;
+      const fileHistories = await a.getFileHistory(session.id);
       const pathLower = file_path.toLowerCase();
 
       // Find matching file histories
@@ -445,9 +327,7 @@ Returns: JSON object with file path, version info, and content. If multiple file
       }
 
       const ver = fileHistory.versions[versionIdx];
-      const content = typeof (a as any).getFileContent === 'function'
-        ? await (a as any).getFileContent(session.id, ver.lineNumber)
-        : null;
+      const content = a.getFileContent ? await a.getFileContent(session.id, ver.lineNumber) : null;
 
       const result = {
         filePath: fileHistory.filePath,
@@ -509,18 +389,18 @@ Returns: JSON array of messages with role, timestamp, and text.`,
           content: [{ type: 'text' as const, text: `Error: No adapter found for session ${session.id}` }],
         };
       }
-      const conversation = await (a as any).getConversation(session.id);
+      const conversation = await a.getConversation(session.id);
 
       // Filter to user/assistant text only, no tool results
-      let messages = (conversation?.messages ?? []).filter((m: any) =>
-        (m.role === 'user' || m.role === 'assistant') && m.text?.trim().length > 0 && !m.toolUse
+      let messages = (conversation?.messages ?? []).filter(m =>
+        (m.role === 'user' || m.role === 'assistant') && m.text?.trim().length > 0 && !m.toolUse && !m.toolCall
       );
 
       if (limit) {
         messages = messages.slice(-limit);
       }
 
-      const data = messages.map((m: any) => ({
+      const data = messages.map(m => ({
         role: m.role,
         timestamp: m.timestamp,
         text: truncate(m.text, 4000),

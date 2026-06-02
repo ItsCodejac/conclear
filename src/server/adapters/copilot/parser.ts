@@ -203,9 +203,9 @@ export async function parseSessionFile(filePath: string): Promise<Session | null
     let name: string | null = null;
     if (data.mode || data.selectedModel) {
       const parts: string[] = [];
-      if (data.mode) parts.push(data.mode);
-      if (data.selectedModel) parts.push(data.selectedModel);
-      name = parts.join(' \u2014 ');
+      if (typeof data.mode === 'string') parts.push(data.mode);
+      if (typeof data.selectedModel === 'string') parts.push(data.selectedModel);
+      name = parts.length > 0 ? parts.join(' \u2014 ') : null;
     }
 
     return {
@@ -327,9 +327,9 @@ export async function parseSessionDetail(filePath: string): Promise<SessionDetai
     let name: string | null = null;
     if (data.mode || data.selectedModel) {
       const parts: string[] = [];
-      if (data.mode) parts.push(data.mode);
-      if (data.selectedModel) parts.push(data.selectedModel);
-      name = parts.join(' \u2014 ');
+      if (typeof data.mode === 'string') parts.push(data.mode);
+      if (typeof data.selectedModel === 'string') parts.push(data.selectedModel);
+      name = parts.length > 0 ? parts.join(' \u2014 ') : null;
     }
 
     return {

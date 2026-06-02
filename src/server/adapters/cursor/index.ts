@@ -1,4 +1,4 @@
-import { Adapter, Session, SessionDetail, ImageData } from '../types.js';
+import { Adapter, Session, SessionDetail, ImageData, SearchResult } from '../types.js';
 import type { CursorParsedConversation } from './parser.js';
 import {
   parseAllSessions,
@@ -7,14 +7,14 @@ import {
   stripImages as stripImagesInDb,
   restoreImage as restoreImageInDb,
   parseConversation,
+  searchMessagesInDb,
 } from './parser.js';
 import { access, copyFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { homedir } from 'os';
 import { cursorDbPath } from '../paths.js';
+import { BACKUP_DIR } from '../constants.js';
 
 const CURSOR_DB_PATH = cursorDbPath();
-const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(dbPath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
@@ -40,6 +40,9 @@ let sessionCacheData: Session[] = [];
 
 export class CursorAdapter implements Adapter {
   name = 'Cursor';
+
+  clearCache(): void { sessionCacheMtime = 0; sessionCacheData = []; }
+
 
   async detect(): Promise<boolean> {
     try {
@@ -131,5 +134,12 @@ export class CursorAdapter implements Adapter {
 
   async getConversation(sessionId: string): Promise<CursorParsedConversation> {
     return parseConversation(CURSOR_DB_PATH, sessionId);
+  }
+
+  async searchMessages(query: string, limit: number): Promise<SearchResult[]> {
+    const sessions = await this.listSessions();
+    const sessionsByComposer = new Map<string, Session>();
+    for (const s of sessions) sessionsByComposer.set(s.id, s);
+    return searchMessagesInDb(CURSOR_DB_PATH, query, limit, sessionsByComposer);
   }
 }

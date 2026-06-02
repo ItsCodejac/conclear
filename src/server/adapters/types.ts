@@ -48,7 +48,15 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   timestamp?: string;
   text: string;
+  /** Short label like "Read: src/foo.ts" — used when the assistant message wraps a tool invocation. */
   toolUse?: string;
+  /** Structured tool call, when the adapter can produce one (currently Cursor). */
+  toolCall?: {
+    name: string;
+    args?: string;
+    result?: string;
+    status?: string;
+  };
   hasImage: boolean;
   imageId?: string;
 }
@@ -112,13 +120,63 @@ export interface SearchResult {
   lineNumber: number;
 }
 
+export interface ParsedConversation {
+  messages: ChatMessage[];
+  timeline: TimelineEvent[];
+}
+
+export interface MutationResult {
+  backupPath: string;
+  bytesReclaimed: number;
+}
+
 export interface Adapter {
   name: string;
   detect(): Promise<boolean>;
   listSessions(): Promise<Session[]>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+
+  // Image lifecycle — every adapter implements these.
   getImageData(sessionId: string, imageId: string): Promise<ImageData>;
-  stripImages(sessionId: string, imageIds: string[]): Promise<{ backupPath: string; bytesReclaimed: number }>;
-  stripAllImages(sessionId: string): Promise<{ backupPath: string; bytesReclaimed: number }>;
+  stripImages(sessionId: string, imageIds: string[]): Promise<MutationResult>;
+  stripAllImages(sessionId: string): Promise<MutationResult>;
   restoreImage(sessionId: string, imageId: string, base64: string, mediaType: string): Promise<void>;
+
+  // Conversation read — every adapter implements this.
+  getConversation(sessionId: string): Promise<ParsedConversation>;
+
+  // Optional capabilities. The presence/absence of each method is the
+  // authoritative answer to "can this adapter do X for this session" —
+  // see capabilitiesOf() below for a structured snapshot.
+  getFileHistory?(sessionId: string): Promise<FileHistory[]>;
+  getFileContent?(sessionId: string, lineNumber: number): Promise<string | null>;
+  scanSecrets?(sessionId: string): Promise<SecretFinding[]>;
+  exportSession?(sessionId: string): Promise<{ markdown: string; name: string | null }>;
+  resizeImages?(sessionId: string, imageIds: string[] | null, targetBytes: number): Promise<MutationResult>;
+  /** Adapter-specific search — overrides the default line-based search when present. */
+  searchMessages?(query: string, limit: number): Promise<SearchResult[]>;
+  /** Reset internal session caches so the next listSessions() re-parses everything. */
+  clearCache?(): void;
+}
+
+export interface AdapterCapabilities {
+  fileHistory: boolean;
+  fileContent: boolean;
+  scanSecrets: boolean;
+  exportSession: boolean;
+  resizeImages: boolean;
+  searchMessages: boolean;
+  clearCache: boolean;
+}
+
+export function capabilitiesOf(adapter: Adapter): AdapterCapabilities {
+  return {
+    fileHistory: typeof adapter.getFileHistory === 'function',
+    fileContent: typeof adapter.getFileContent === 'function',
+    scanSecrets: typeof adapter.scanSecrets === 'function',
+    exportSession: typeof adapter.exportSession === 'function',
+    resizeImages: typeof adapter.resizeImages === 'function',
+    searchMessages: typeof adapter.searchMessages === 'function',
+    clearCache: typeof adapter.clearCache === 'function',
+  };
 }

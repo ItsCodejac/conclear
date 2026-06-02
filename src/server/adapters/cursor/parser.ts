@@ -16,7 +16,7 @@
  */
 
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import { Session, SessionDetail, SessionImage, ImageData } from '../types.js';
+import { Session, SessionDetail, SessionImage, ImageData, SearchResult } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types for raw Cursor JSON structures
@@ -487,34 +487,15 @@ export function restoreImage(
 // Conversation parsing (for conversation view)
 // ---------------------------------------------------------------------------
 
-export interface CursorMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  toolCall?: {
-    name: string;
-    args: string;
-    result?: string;
-    status?: string;
-  };
-  hasImage: boolean;
-  imageId?: string;
-}
+import type { ChatMessage, TimelineEvent, TimelineEventType, ParsedConversation } from '../types.js';
 
-export interface CursorParsedConversation {
-  messages: CursorMessage[];
-  timeline: Array<{
-    id: string;
-    type: string;
-    summary: string;
-    detail?: string;
-  }>;
-}
+export type CursorMessage = ChatMessage;
+export type CursorParsedConversation = ParsedConversation;
 
 export function parseConversation(dbPath: string, composerId: string): CursorParsedConversation {
   const db = openDb(dbPath);
-  const messages: CursorMessage[] = [];
-  const timeline: CursorParsedConversation['timeline'] = [];
+  const messages: ChatMessage[] = [];
+  const timeline: TimelineEvent[] = [];
 
   try {
     const row = db.prepare('SELECT value FROM cursorDiskKV WHERE key = ?')
@@ -579,8 +560,8 @@ export function parseConversation(dbPath: string, composerId: string): CursorPar
   return { messages, timeline };
 }
 
-function mapToolToTimelineType(toolName: string): string {
-  const map: Record<string, string> = {
+function mapToolToTimelineType(toolName: string): TimelineEventType {
+  const map: Record<string, TimelineEventType> = {
     run_terminal_cmd: 'bash',
     edit_file: 'edit',
     read_file: 'read',
@@ -605,4 +586,80 @@ function summarizeToolArgs(rawArgs: string): string {
   } catch {
     return rawArgs.slice(0, 80);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+/**
+ * Search bubble text content directly via SQL LIKE. Returns up to `limit`
+ * matches across every composer in the DB.
+ *
+ * `sessionsByComposer` lets the caller attach session name / project from the
+ * already-parsed session list without an extra DB round-trip per result.
+ */
+export function searchMessagesInDb(
+  dbPath: string,
+  query: string,
+  limit: number,
+  sessionsByComposer: Map<string, Session>,
+): SearchResult[] {
+  const db = openDb(dbPath);
+  const results: SearchResult[] = [];
+  const queryLower = query.toLowerCase();
+
+  try {
+    // SQL LIKE is case-sensitive on TEXT but cursor bubbles store JSON with
+    // user-quoted text. Pull a wider candidate set, then filter in JS.
+    const stmt = db.prepare(
+      "SELECT key, value FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' AND value LIKE ? LIMIT ?",
+    );
+    const candidate = `%${query}%`;
+    const cap = Math.max(limit * 4, 50);
+    const rows = stmt.all(candidate, cap) as Array<{ key: string; value: string }>;
+
+    for (const row of rows) {
+      if (results.length >= limit) break;
+      const parts = row.key.split(':');
+      if (parts.length !== 3) continue;
+      const composerId = parts[1];
+
+      let bubble: BubbleData;
+      try {
+        bubble = JSON.parse(row.value) as BubbleData;
+      } catch { continue; }
+
+      const text = bubble.text || '';
+      if (!text) continue;
+
+      const matchIdx = text.toLowerCase().indexOf(queryLower);
+      if (matchIdx === -1) continue;
+
+      const radius = 100;
+      const start = Math.max(0, matchIdx - radius);
+      const end = Math.min(text.length, matchIdx + queryLower.length + radius);
+      let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
+      if (start > 0) snippet = '...' + snippet;
+      if (end < text.length) snippet = snippet + '...';
+
+      const session = sessionsByComposer.get(composerId);
+      const role: 'user' | 'assistant' = bubble.type === 1 ? 'user' : 'assistant';
+
+      results.push({
+        sessionId: composerId,
+        sessionName: session?.name ?? null,
+        project: session?.project ?? 'Cursor',
+        tool: 'cursor',
+        timestamp: undefined,
+        role,
+        text: snippet,
+        lineNumber: 0,
+      });
+    }
+  } finally {
+    db.close();
+  }
+
+  return results;
 }

@@ -11,9 +11,9 @@ import {
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
+import { BACKUP_DIR } from '../constants.js';
 
 const GEMINI_DIR = join(homedir(), '.gemini', 'tmp');
-const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(filePath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
@@ -41,6 +41,9 @@ const sessionFileMap = new Map<string, string>();
 
 export class GeminiAdapter implements Adapter {
   name = 'Gemini CLI';
+
+  clearCache(): void { sessionCache.clear(); }
+
 
   async detect(): Promise<boolean> {
     try {

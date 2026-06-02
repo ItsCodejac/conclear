@@ -10,12 +10,11 @@ import {
 } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
-import { homedir } from 'os';
 
 import { vscodeWorkspaceStorage } from '../paths.js';
+import { BACKUP_DIR } from '../constants.js';
 
 const VSCODE_STORAGE_DIR = vscodeWorkspaceStorage();
-const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(filePath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
@@ -66,6 +65,9 @@ async function getWorkspaceName(hashDir: string): Promise<string> {
 
 export class CopilotAdapter implements Adapter {
   name = 'GitHub Copilot';
+
+  clearCache(): void { sessionCache.clear(); sessionFileMap.clear(); }
+
 
   async detect(): Promise<boolean> {
     try {

@@ -28,6 +28,7 @@
   },
   "files": [
     "dist",
+    "skill.md",
     "README.md",
     "LICENSE"
   ],
@@ -37,7 +38,9 @@
     "build:server": "tsc --project tsconfig.server.json --outDir dist",
     "start": "node dist/cli.js",
     "preview": "vite preview",
-    "prepublishOnly": "npm run build"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -61,8 +64,10 @@
     "@types/react-dom": "^19.1.2",
     "@types/sharp": "^0.31.1",
     "@vitejs/plugin-react": "^4.4.1",
+    "@vitest/coverage-v8": "^4.1.8",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
-    "vite": "^6.3.2"
+    "vite": "^6.3.2",
+    "vitest": "^4.1.8"
   }
 }

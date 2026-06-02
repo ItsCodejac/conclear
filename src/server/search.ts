@@ -1,15 +1,18 @@
 /**
- * Shared session search helpers used by both the REST routes and the MCP server.
+ * Shared session search used by the REST, MCP, and CLI surfaces.
  *
- * Search is line-oriented and assumes the file is Anthropic-shaped JSONL or JSON
- * (Claude, Cline). For other adapters (Copilot single-JSON, Cursor SQLite) the
- * line filter degrades gracefully — it just won't match anything, which is the
- * right behavior here since a structured search would be a per-adapter job.
+ * Two layers:
+ *  - `searchSessionFile`: line-oriented search over Anthropic-shaped JSONL/JSON
+ *    (Claude, Cline). Used as the fallback for adapters without their own.
+ *  - `searchAllAdapters`: iterates adapters, calling `adapter.searchMessages`
+ *    where present (e.g. Cursor's SQLite-aware variant) and falling back to
+ *    `searchSessionFile` otherwise. Single entry point for callers.
  */
 
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 import type { Session, SearchResult } from './adapters/types.js';
+import { ADAPTERS } from './adapters/registry.js';
 
 /** Strip system-level XML tags from text so they don't pollute search results. */
 export function stripSystemTags(input: string): string {
@@ -108,4 +111,66 @@ export async function searchSessionFile(
   }
 
   return results;
+}
+
+/**
+ * Search every detected adapter for messages matching `query`.
+ *
+ * Adapters that implement `searchMessages` (e.g. Cursor's SQLite-aware
+ * variant) get to handle their own search. Adapters without it fall back
+ * to `searchSessionFile` over each session, batched in parallel.
+ *
+ * Results are merged, sorted by timestamp (newest first), and capped at
+ * `limit`. An optional `projectFilter` narrows by case-insensitive substring.
+ */
+export async function searchAllAdapters(
+  query: string,
+  limit: number,
+  projectFilter?: string,
+): Promise<SearchResult[]> {
+  const queryLower = query.toLowerCase();
+  const pLower = projectFilter?.toLowerCase();
+  const all: SearchResult[] = [];
+
+  for (const adapter of ADAPTERS) {
+    try {
+      if (!(await adapter.detect())) continue;
+    } catch { continue; }
+
+    if (adapter.searchMessages) {
+      try {
+        const adapterResults = await adapter.searchMessages(query, limit);
+        const filtered = pLower
+          ? adapterResults.filter(r => r.project.toLowerCase().includes(pLower))
+          : adapterResults;
+        all.push(...filtered);
+      } catch { /* skip on error */ }
+      continue;
+    }
+
+    let sessions: Session[];
+    try {
+      sessions = await adapter.listSessions();
+    } catch { continue; }
+    if (pLower) sessions = sessions.filter(s => s.project.toLowerCase().includes(pLower));
+
+    const batchSize = 20;
+    for (let i = 0; i < sessions.length; i += batchSize) {
+      if (all.length >= limit * 2) break;
+      const batch = sessions.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(s => searchSessionFile(s, queryLower, 5)),
+      );
+      all.push(...batchResults.flat());
+    }
+  }
+
+  all.sort((a, b) => {
+    if (!a.timestamp && !b.timestamp) return 0;
+    if (!a.timestamp) return 1;
+    if (!b.timestamp) return -1;
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+  });
+
+  return all.slice(0, limit);
 }

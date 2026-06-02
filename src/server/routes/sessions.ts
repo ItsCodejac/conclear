@@ -1,14 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { readdir, stat, unlink } from 'fs/promises';
+import type { Session, SearchResult } from '../adapters/types.js';
+import { ADAPTERS as adapters, clearAllCaches } from '../adapters/registry.js';
+import { BACKUP_DIR } from '../adapters/constants.js';
+import { searchAllAdapters } from '../search.js';
 import { join } from 'path';
-import { homedir } from 'os';
-import { ClaudeAdapter } from '../adapters/claude/index.js';
-import { GeminiAdapter } from '../adapters/gemini/index.js';
-import { ClineAdapter } from '../adapters/cline/index.js';
-import { CursorAdapter } from '../adapters/cursor/index.js';
-import { CopilotAdapter } from '../adapters/copilot/index.js';
-import type { Adapter, Session, SearchResult } from '../adapters/types.js';
-import { searchSessionFile } from '../search.js';
 
 // Express 5 params can be string | string[]
 function param(req: Request, name: string): string {
@@ -17,11 +13,10 @@ function param(req: Request, name: string): string {
 }
 
 const router = Router();
-const adapters: Adapter[] = [new ClaudeAdapter(), new GeminiAdapter(), new ClineAdapter(), new CursorAdapter(), new CopilotAdapter()];
-const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
-router.get('/sessions', async (_req: Request, res: Response) => {
+router.get('/sessions', async (req: Request, res: Response) => {
   try {
+    if (req.query.refresh === 'true') clearAllCaches();
     const allSessions = [];
     for (const adapter of adapters) {
       if (await adapter.detect()) {
@@ -40,6 +35,7 @@ router.get('/sessions', async (_req: Request, res: Response) => {
 
 router.get('/search', async (req: Request, res: Response) => {
   try {
+    if (req.query.refresh === 'true') clearAllCaches();
     const q = (req.query.q as string || '').trim();
     if (!q || q.length < 2) {
       res.json([]);
@@ -47,50 +43,9 @@ router.get('/search', async (req: Request, res: Response) => {
     }
 
     const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
-    const maxPerSession = 5;
-    const queryLower = q.toLowerCase();
-
-    // Gather all sessions from all adapters in parallel
-    const adapterResults = await Promise.all(
-      adapters.map(async (adapter) => {
-        try {
-          if (await adapter.detect()) {
-            return await adapter.listSessions();
-          }
-        } catch {
-          // skip failing adapter
-        }
-        return [] as Session[];
-      })
-    );
-    const allSessions = adapterResults.flat();
-
-    // Search all sessions in parallel (batched to avoid too many open file handles)
-    const batchSize = 20;
-    let allResults: SearchResult[] = [];
-
-    for (let i = 0; i < allSessions.length; i += batchSize) {
-      if (allResults.length >= limit) break;
-
-      const batch = allSessions.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(session => searchSessionFile(session, queryLower, maxPerSession))
-      );
-      allResults.push(...batchResults.flat());
-    }
-
-    // Sort by timestamp (most recent first), results without timestamp go last
-    allResults.sort((a, b) => {
-      if (!a.timestamp && !b.timestamp) return 0;
-      if (!a.timestamp) return 1;
-      if (!b.timestamp) return -1;
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    });
-
-    // Limit
-    allResults = allResults.slice(0, limit);
-
-    res.json(allResults);
+    const project = typeof req.query.project === 'string' ? req.query.project : undefined;
+    const results = await searchAllAdapters(q, limit, project);
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -120,7 +75,7 @@ router.get('/sessions/:id/conversation', async (req: Request, res: Response) => 
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const messages = await (adapter as any).getConversation(param(req, 'id'));
+          const messages = await adapter.getConversation(param(req, 'id'));
           res.json(messages);
           return;
         } catch {
@@ -161,7 +116,8 @@ router.get('/sessions/:id/files', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const files = await (adapter as any).getFileHistory(param(req, 'id'));
+          if (!adapter.getFileHistory) throw new Error('not supported');
+          const files = await adapter.getFileHistory(param(req, 'id'));
           res.json(files);
           return;
         } catch {
@@ -185,7 +141,8 @@ router.get('/sessions/:id/files/:lineNumber', async (req: Request, res: Response
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const content = await (adapter as any).getFileContent(param(req, 'id'), lineNumber);
+          if (!adapter.getFileContent) throw new Error('not supported');
+          const content = await adapter.getFileContent(param(req, 'id'), lineNumber);
           if (content === null) {
             res.status(404).json({ error: 'Content not found at line' });
             return;
@@ -208,7 +165,8 @@ router.get('/sessions/:id/scan', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const findings = await (adapter as any).scanSecrets(param(req, 'id'));
+          if (!adapter.scanSecrets) throw new Error('not supported');
+          const findings = await adapter.scanSecrets(param(req, 'id'));
           res.json(findings);
           return;
         } catch {
@@ -227,7 +185,8 @@ router.get('/sessions/:id/export', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const { markdown, name } = await (adapter as any).exportSession(param(req, 'id'));
+          if (!adapter.exportSession) throw new Error('not supported');
+          const { markdown, name } = await adapter.exportSession(param(req, 'id'));
           const safeName = (name || param(req, 'id'))
             .replace(/[^a-zA-Z0-9_\- ]/g, '')
             .replace(/\s+/g, '-')
@@ -279,7 +238,8 @@ router.post('/sessions/:id/resize', async (req: Request, res: Response) => {
     for (const adapter of adapters) {
       if (await adapter.detect()) {
         try {
-          const result = await (adapter as any).resizeImages(
+          if (!adapter.resizeImages) throw new Error('not supported');
+          const result = await adapter.resizeImages(
             param(req, 'id'),
             imageIds?.length ? imageIds : null,
             targetBytes,

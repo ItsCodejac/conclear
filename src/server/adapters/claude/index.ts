@@ -6,10 +6,10 @@ import type { SecretFinding } from '../types.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
+import { BACKUP_DIR } from '../constants.js';
 
 const CLAUDE_DIR = join(homedir(), '.claude', 'projects');
 const CLAUDE_SESSIONS_DIR = join(homedir(), '.claude', 'sessions');
-const BACKUP_DIR = join(homedir(), '.conclear', 'backups');
 
 async function createBackup(filePath: string): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
@@ -69,6 +69,9 @@ async function loadSessionNameMap(): Promise<Map<string, string>> {
 
 export class ClaudeAdapter implements Adapter {
   name = 'Claude Code';
+
+  clearCache(): void { sessionCache.clear(); }
+
 
   async detect(): Promise<boolean> {
     try {
