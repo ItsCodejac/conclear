@@ -67,7 +67,7 @@ conclear scan my-session --json
 
 ## JSON output for scripting
 
-All commands support `--json` for structured output:
+All query commands support `--json` for structured output:
 
 ```bash
 # Get session list as JSON
@@ -75,4 +75,33 @@ conclear sessions --json | jq '.[0].id'
 
 # Search with JSON output
 conclear search "database migration" --json | jq '.[] | .text'
+```
+
+## Install ConClear into your AI clients
+
+```bash
+# Detect and install for every supported client
+conclear install
+
+# Install for specific clients only
+conclear install --claude-code --cursor
+
+# Install for every supported client (even undetected ones), MCP only
+conclear install --all --no-skill
+
+# Check status afterward
+conclear doctor
+
+# Remove from a specific client
+conclear uninstall --zed
+```
+
+## Start the MCP server over HTTP
+
+```bash
+# Streamable HTTP on default port 7331
+conclear mcp --http
+
+# Custom port
+conclear mcp --http --port 8080
 ```

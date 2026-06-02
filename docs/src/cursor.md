@@ -27,3 +27,7 @@ Cursor stores conversation data in a SQLite database (`state.vscdb`) within its 
 ## Notes
 
 Since Cursor uses a single SQLite database rather than individual session files, backups copy the entire database. The adapter reads conversation data from specific database keys and parses the embedded JSON structures.
+
+## Installing into Cursor
+
+Run `conclear install --cursor` to add ConClear as an MCP server at `~/.cursor/mcp.json` and (Cursor v2.2+) install the Skill at `~/.cursor/skills/conclear/SKILL.md`. See [Install into AI Clients](install.md).

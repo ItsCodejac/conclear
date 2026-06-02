@@ -47,3 +47,7 @@ Messages contain a `message` object with `role` and `content`. Content can be a 
 ## Session Name Resolution
 
 ConClear cross-references JSONL filenames with `~/.claude/sessions/*.json` metadata files to display custom session names set via Claude Code's `/resume` command.
+
+## Installing into Claude Code
+
+Run `conclear install --claude-code` to add ConClear as an MCP server and install the Skill at `~/.claude/skills/conclear/SKILL.md`. ConClear uses `claude mcp add` when the CLI is available; otherwise it edits `~/.claude.json` directly. See [Install into AI Clients](install.md).

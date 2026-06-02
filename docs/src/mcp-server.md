@@ -5,25 +5,33 @@ ConClear runs as an MCP (Model Context Protocol) server so AI agents can query y
 ## Starting the Server
 
 ```bash
-conclear mcp
+conclear mcp                  # stdio transport (default)
+conclear mcp --http            # Streamable HTTP on :7331
+conclear mcp --http --port 8080
 ```
 
-The server runs until the process is killed. It logs to stderr so it doesn't interfere with the MCP stdio protocol on stdout.
+The server runs until the process is killed. In stdio mode it logs to stderr so it doesn't interfere with the MCP stdio protocol on stdout.
+
+SSE transport is not supported — it has been deprecated upstream in favor of Streamable HTTP.
 
 ## Configuration
 
-Add ConClear to your Claude Code MCP settings (in `~/.claude/settings.json` or project-level `.claude/settings.json`):
+The recommended way to wire ConClear up to your AI client is `conclear install` — it auto-detects 10+ clients and handles per-client schema quirks. See [Install into AI Clients](install.md).
+
+If you'd rather edit config by hand, the canonical MCP entry is:
 
 ```json
 {
   "mcpServers": {
     "conclear": {
-      "command": "npx",
-      "args": ["conclear", "mcp"]
+      "command": "conclear",
+      "args": ["mcp"]
     }
   }
 }
 ```
+
+VS Code uses `servers` (not `mcpServers`) and requires `"type": "stdio"`. Zed nests under `context_servers` and requires `"source": "custom"`.
 
 ## Available Tools
 

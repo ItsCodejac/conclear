@@ -4,6 +4,7 @@
 - [Getting Started](getting-started.md)
   - [Installation](installation.md)
   - [Quick Start](quick-start.md)
+  - [Install into AI Clients](install.md)
 - [Web UI](web-ui.md)
   - [Session Browser](session-browser.md)
   - [Images Tab](images-tab.md)

@@ -105,3 +105,50 @@ Output groups findings by severity (high, medium, low) and shows:
 - Redacted pattern (first 4 and last 4 characters)
 - Surrounding context
 - Line number in the session file
+
+## conclear install
+
+Install the ConClear MCP server (and Skill, where supported) into your AI clients.
+
+```bash
+conclear install [--all] [--<client-id>...] [--no-skill]
+```
+
+| Option | Description |
+|--------|-------------|
+| _(none)_ | Install into every detected client |
+| `--all` | Install into every supported client, even undetected ones |
+| `--<client-id>` | Install only for the named client(s) |
+| `--no-skill` | Skip skill install (MCP only) |
+
+Client IDs: `claude-code`, `claude-desktop`, `cursor`, `windsurf`, `vscode`, `antigravity`, `zed`, `cline`, `continue`, `codex`, `kiro`.
+
+Examples:
+
+```bash
+conclear install
+conclear install --cursor --claude-code
+conclear install --all --no-skill
+```
+
+Each config edit is backed up to `~/.conclear/backups/`. Where a client provides its own CLI (`claude mcp add`, `code --add-mcp`, `codex mcp add`) ConClear uses it; otherwise the config file is merged directly. Zed edits are JSONC-aware (comments and formatting are preserved).
+
+## conclear uninstall
+
+Remove the ConClear MCP server (and Skill) from clients. Same flags as `install`.
+
+```bash
+conclear uninstall [--all] [--<client-id>...] [--no-skill]
+```
+
+`uninstall` ignores detection by default and operates on every supported client. Pass `--<client-id>` flags to target specific clients.
+
+## conclear doctor
+
+Show install status across all supported clients.
+
+```bash
+conclear doctor
+```
+
+Output shows, per client: whether the client is detected, whether the MCP server is installed, whether the Skill is installed (for clients that support skills), and any notes (e.g. Windsurf's ~100-tool cap, Kiro's inherited Amazon Q config path).

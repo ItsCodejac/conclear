@@ -2,6 +2,10 @@
 
 ConClear indexes AI coding tool session history for search, file recovery, and context restoration.
 
+## Installation
+
+This skill is installed automatically by `conclear install` (or `conclear install --claude-code`). Skill install also works for Cursor (v2.2+) and Google Antigravity. Install the `conclear` CLI first: `npm install -g conclear`.
+
 ## Commands
 
 Run via Bash — no server needed.

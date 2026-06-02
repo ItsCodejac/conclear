@@ -19,3 +19,5 @@ Backups can be managed from the web UI's backup manager or by directly accessing
 - [File Recovery](file-recovery.md) -- recover previous file versions from session history.
 - [Secret Scanning](secret-scanning.md) -- detect leaked credentials in session data.
 - [Export](export.md) -- export sessions as markdown documents.
+
+For installing ConClear's MCP server (and Skill) into AI clients — a separate lifecycle from these data operations — see [Install into AI Clients](install.md).

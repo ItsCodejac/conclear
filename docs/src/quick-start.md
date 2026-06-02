@@ -32,15 +32,36 @@ All CLI commands work without the web server -- they read session files directly
 
 ## Set up the MCP server
 
-Add ConClear to your Claude Code MCP configuration so AI agents can query your session history:
+Run a single command to install the MCP server (and Skill, where supported) into every AI client you have installed:
+
+```bash
+conclear install
+```
+
+This auto-detects Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Google Antigravity, Zed, Cline, Codex CLI, and Kiro CLI. To see what's installed where:
+
+```bash
+conclear doctor
+```
+
+To start the server manually (or for clients that aren't auto-installable):
+
+```bash
+conclear mcp                  # stdio (default)
+conclear mcp --http            # Streamable HTTP on :7331
+```
+
+If you'd rather wire ConClear up by hand, the canonical MCP entry is:
 
 ```json
 {
   "mcpServers": {
     "conclear": {
-      "command": "npx",
-      "args": ["conclear", "mcp"]
+      "command": "conclear",
+      "args": ["mcp"]
     }
   }
 }
 ```
+
+See [Install into AI Clients](install.md) for the full reference.

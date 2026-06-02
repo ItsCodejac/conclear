@@ -1,12 +1,12 @@
 # ConClear
 
-> ConClear is a visual utility and CLI for managing AI coding tool session data. It reads session files from Claude Code, Cursor, Gemini CLI, Cline/Roo Code, and GitHub Copilot, giving you a unified view of your AI coding history.
+> ConClear is a visual utility and CLI for managing AI coding tool session data. It reads session files from Claude Code, Cursor, Gemini CLI, Cline/Roo Code, and GitHub Copilot, giving you a unified view of your AI coding history. ConClear can also be installed as an MCP server into 11 AI clients (Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Google Antigravity, Zed, Cline, Continue, Codex CLI, Kiro CLI) via `conclear install`.
 
 ## Full Documentation
 
 ## Introduction
 
-ConClear is a visual utility and CLI for managing AI coding tool session data. It reads session files from Claude Code, Cursor, Gemini CLI, Cline/Roo Code, and GitHub Copilot, giving you a unified view of your AI coding history.
+ConClear is a visual utility and CLI for managing AI coding tool session data. It reads session files from Claude Code, Cursor, Gemini CLI, Cline/Roo Code, and GitHub Copilot, giving you a unified view of your AI coding history. ConClear can also be installed as an MCP server into 11 AI clients (Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Google Antigravity, Zed, Cline, Continue, Codex CLI, Kiro CLI) via `conclear install`.
 
 ### The Problem
 
@@ -116,18 +116,56 @@ All CLI commands work without the web server -- they read session files directly
 
 ### Set up the MCP server
 
-Add ConClear to your Claude Code MCP configuration so AI agents can query your session history:
+For Claude Code (and 10 other clients), run:
+
+```bash
+conclear install
+```
+
+This auto-detects every supported AI client on your machine and installs the MCP server (plus a Skill for clients that support skills: Claude Code, Cursor v2.2+, Google Antigravity). See "Install into AI Clients" below for the full reference.
+
+To configure manually, the canonical MCP entry is:
 
 ```json
 {
   "mcpServers": {
     "conclear": {
-      "command": "npx",
-      "args": ["conclear", "mcp"]
+      "command": "conclear",
+      "args": ["mcp"]
     }
   }
 }
 ```
+
+VS Code uses `servers` instead of `mcpServers` and requires `"type": "stdio"`. Zed nests under `context_servers` and requires `"source": "custom"`.
+
+## Install into AI Clients
+
+`conclear install` wires the MCP server (and Skill, where supported) into AI clients in one step.
+
+```bash
+conclear install              # detect + install into every supported client
+conclear install --all        # install for every supported client, even undetected
+conclear install --cursor --claude-code   # specific clients only
+conclear install --no-skill   # MCP only, skip skills
+conclear uninstall [same flags]
+conclear doctor               # show install status across all clients
+```
+
+Supported clients: Claude Code, Claude Desktop, Cursor, Windsurf, VS Code (Copilot Chat), Google Antigravity, Zed, Cline, Codex CLI, Kiro CLI. Continue is manual-only (YAML config; install prints the snippet to paste).
+
+Skill install is supported for: Claude Code (`~/.claude/skills/conclear/`), Cursor v2.2+ (`~/.cursor/skills/conclear/`), Google Antigravity (`~/.gemini/config/skills/conclear/`).
+
+All config edits create a timestamped backup in `~/.conclear/backups/`. Per-client schema differences (VS Code's `servers` key, Zed's `context_servers` + required `source: "custom"`) are handled automatically. Zed edits preserve comments and formatting via `jsonc-parser`.
+
+### HTTP transport
+
+```bash
+conclear mcp --http              # Streamable HTTP on :7331
+conclear mcp --http --port 8080
+```
+
+Stdio remains the default. SSE is not supported (deprecated upstream).
 
 ## Web UI
 

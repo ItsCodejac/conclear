@@ -22,7 +22,16 @@ These commands run standalone -- they read session data directly:
 
 ### MCP Server
 
-- `mcp` -- start the MCP server (stdio transport)
+- `mcp` -- start the MCP server (stdio transport, default)
+- `mcp --http [--port N]` -- start with Streamable HTTP transport (default port 7331)
+
+### Install Lifecycle
+
+These commands wire ConClear up to AI clients. See [Install into AI Clients](install.md).
+
+- `install` -- auto-detect supported clients and install the MCP server (and Skill, where supported)
+- `uninstall` -- remove the MCP server (and Skill) from clients
+- `doctor` -- show install status per client, including warnings (e.g. Windsurf's ~100-tool cap)
 
 ### UI Launcher
 

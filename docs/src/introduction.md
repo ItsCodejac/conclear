@@ -22,7 +22,8 @@ ConClear gives you a better option than `/compact` or starting over.
 - **Timeline** -- event log of everything that happened: edits, bash commands, file reads, errors.
 - **Secret scanning** -- detect API keys, tokens, and credentials that may have leaked into session data.
 - **CLI query interface** -- search sessions, recover files, and dump context from the terminal without starting the server.
-- **MCP server** -- expose session history to AI agents via the Model Context Protocol.
+- **MCP server** -- expose session history to AI agents via the Model Context Protocol. Stdio and Streamable HTTP transports.
+- **One-step client integration** -- `conclear install` wires the MCP server (and Skill, where supported) into Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Google Antigravity, Zed, Cline, Continue, Codex CLI, and Kiro CLI.
 
 ## Privacy
 

@@ -1,5 +1,7 @@
 # Installation
 
+This page covers installing the `conclear` CLI itself. To install ConClear's MCP server **into** an AI client (Claude Code, Cursor, etc.), see [Install into AI Clients](install.md) after finishing here.
+
 ## Requirements
 
 - Node.js 22.0.0 or later

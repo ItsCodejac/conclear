@@ -1,6 +1,8 @@
 # Supported Tools
 
-ConClear supports five AI coding tools. Each tool stores session data in a different format and location. ConClear auto-detects which tools are installed by checking their standard data directories.
+This page covers the AI coding tools ConClear **reads session data from**. For the separate list of AI clients ConClear can **install its MCP server into**, see [Install into AI Clients](install.md).
+
+ConClear reads session data from five AI coding tools. Each tool stores session data in a different format and location. ConClear auto-detects which tools are installed by checking their standard data directories.
 
 | Tool | Format | Data Location |
 |------|--------|---------------|

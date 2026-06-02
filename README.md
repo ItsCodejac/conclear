@@ -49,6 +49,8 @@ npx conclear
 
 ## Supported tools
 
+ConClear reads session data from these AI coding tools:
+
 | Tool | Format | Status |
 |------|--------|--------|
 | Claude Code | JSONL | Full support |
@@ -58,6 +60,8 @@ npx conclear
 | GitHub Copilot Chat | JSON | Full support |
 
 ConClear auto-detects which tools you have installed and scans their session directories. No configuration needed.
+
+Separately, ConClear can be **installed as an MCP server** into 11 AI clients (Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Google Antigravity, Zed, Cline, Continue, Codex CLI, Kiro CLI) — see [Install into AI clients](#install-into-ai-clients) below.
 
 ## CLI
 
@@ -90,23 +94,54 @@ All commands support `--json` for structured output.
 ConClear runs as an MCP server so AI agents can query your session history through tool use:
 
 ```bash
-conclear mcp
+conclear mcp                  # stdio (default)
+conclear mcp --http            # Streamable HTTP on :7331
+conclear mcp --http --port N   # custom port
 ```
 
-Configure in your Claude Code settings:
+Tools available: `conclear_search`, `conclear_sessions`, `conclear_summary`, `conclear_file_content`, `conclear_context`.
+
+## Install into AI clients
+
+`conclear install` wires the MCP server (and Skill, where supported) into your AI clients automatically — no manual config edits:
+
+```bash
+conclear install              # detect & install into every supported client
+conclear install --all        # install everywhere, even undetected clients
+conclear install --cursor --claude-code   # specific clients
+conclear install --no-skill   # MCP only, skip skills
+conclear uninstall            # same flags
+conclear doctor               # show install status per client
+```
+
+| Client | MCP | Skill | Notes |
+|---|---|---|---|
+| Claude Code | ✓ | ✓ | uses `claude mcp add` |
+| Claude Desktop | ✓ | — | restart required |
+| Cursor | ✓ | ✓ | skills since v2.2 |
+| Windsurf | ✓ | — | ~100-tool cap surfaced in `doctor` |
+| VS Code (Copilot) | ✓ | — | uses `code --add-mcp` |
+| Google Antigravity | ✓ | ✓ | |
+| Zed | ✓ | — | comments preserved (JSONC) |
+| Cline | ✓ | — | |
+| Codex CLI | ✓ | — | uses `codex mcp add` |
+| Kiro CLI | ✓ | — | |
+| Continue | manual | — | prints YAML snippet to paste |
+
+All edits are backed up to `~/.conclear/backups/`. Full reference: [`docs/src/install.md`](docs/src/install.md).
+
+If you'd rather wire ConClear up by hand, the canonical MCP entry is:
 
 ```json
 {
   "mcpServers": {
     "conclear": {
-      "command": "npx",
-      "args": ["conclear", "mcp"]
+      "command": "conclear",
+      "args": ["mcp"]
     }
   }
 }
 ```
-
-Tools available: `conclear_search`, `conclear_sessions`, `conclear_summary`, `conclear_file_content`, `conclear_context`.
 
 ## Problem detection
 
