@@ -10,50 +10,77 @@
  *   conclear summary <session-name-or-id> [--json]
  *   conclear context <session-name-or-id> [--json]
  *
+ * Install commands:
+ *   conclear install [--all] [--<client-id>...] [--no-skill]
+ *   conclear uninstall [--all] [--<client-id>...] [--no-skill]
+ *   conclear doctor
+ *
+ * MCP server:
+ *   conclear mcp [--http] [--port <n>]
+ *
  * UI launcher (default):
  *   conclear          — starts the web UI
  *   conclear --ui     — starts the web UI
  */
 
 const QUERY_COMMANDS = new Set(['search', 'files', 'sessions', 'summary', 'context', 'export', 'scan']);
-const META_COMMANDS = new Set(['mcp']);
+const META_COMMANDS = new Set(['mcp', 'install', 'uninstall', 'doctor']);
 
 function printHelp(): void {
   process.stdout.write(`ConClear - AI session explorer
 
 QUERY COMMANDS (no server needed):
   conclear search <query> [--project <name>] [--limit <n>] [--json]
-    Search across all sessions for matching messages
-
   conclear files <path-pattern> [--session <name-or-id>] [--latest] [--json]
-    Find file versions matching a path pattern (e.g. "api.ts", "src/server/*")
-
   conclear sessions [--project <name>] [--limit <n>] [--json]
-    List sessions, most recent first
-
   conclear summary <session-name-or-id> [--json]
-    Quick summary of a session
-
   conclear context <session-name-or-id> [--json]
-    Dump full conversation as clean text (user/assistant only)
-
   conclear export <session-name-or-id> [--output <file>] [--format md|txt]
-    Export session as a clean markdown document
-
   conclear scan <session-name-or-id> [--json]
-    Scan session for potential secrets, API keys, and credentials
+
+INSTALL:
+  conclear install         Install MCP server (+ skill where supported) into detected AI clients
+  conclear install --all   Install for every supported client, even undetected
+  conclear install --claude-code --cursor   Install only for specific clients
+  conclear install --no-skill               Install MCP only, skip skills
+  conclear uninstall [flags as above]
+  conclear doctor          Show install status across all clients
 
 MCP SERVER:
-  conclear mcp           Start the MCP server (stdio transport, for AI agents)
+  conclear mcp                 Start the MCP server (stdio transport, for AI agents)
+  conclear mcp --http          Start with Streamable HTTP transport
+  conclear mcp --http --port 8080
 
 UI LAUNCHER:
   conclear            Start the web UI
   conclear --ui       Start the web UI
 
 FLAGS:
-  --json              Output structured JSON (works on all commands)
+  --json              Output structured JSON (works on all query commands)
   --help, -h          Show this help
 `);
+}
+
+/** Pluck --port N or --port=N from argv. */
+function pickPort(args: string[]): number | undefined {
+  const idx = args.indexOf('--port');
+  if (idx >= 0 && args[idx + 1]) return Number(args[idx + 1]);
+  const eq = args.find(a => a.startsWith('--port='));
+  if (eq) return Number(eq.slice('--port='.length));
+  return undefined;
+}
+
+/** Parse install/uninstall flags: --all, --no-skill, --<client-id>. */
+function parseInstallFlags(args: string[]): { all: boolean; noSkill: boolean; only: string[] } {
+  const all = args.includes('--all');
+  const noSkill = args.includes('--no-skill');
+  const only: string[] = [];
+  for (const a of args) {
+    if (a.startsWith('--') && a !== '--all' && a !== '--no-skill' && !a.startsWith('--port')) {
+      only.push(a.slice(2));
+    }
+  }
+  return { all, noSkill, only };
 }
 
 async function main(): Promise<void> {
@@ -66,12 +93,25 @@ async function main(): Promise<void> {
 
   const command = args[0]?.toLowerCase();
 
-  // MCP server — start and block
+  // Meta commands — MCP server + install lifecycle
   if (command && META_COMMANDS.has(command)) {
     if (command === 'mcp') {
       const { startMcpServer } = await import('./mcp-server.js');
-      await startMcpServer();
-      // Server runs until process is killed; don't fall through
+      const http = args.includes('--http');
+      const port = pickPort(args);
+      await startMcpServer({ http, port });
+      return;
+    }
+    if (command === 'install' || command === 'uninstall') {
+      const flags = parseInstallFlags(args.slice(1));
+      const { runInstall, runUninstall } = await import('./install/index.js');
+      if (command === 'install') await runInstall(flags);
+      else await runUninstall(flags);
+      return;
+    }
+    if (command === 'doctor') {
+      const { runDoctor } = await import('./install/index.js');
+      await runDoctor();
       return;
     }
   }

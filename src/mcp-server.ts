@@ -8,6 +8,9 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import { z } from 'zod';
 
 import { ClaudeAdapter } from './server/adapters/claude/index.js';
@@ -498,7 +501,31 @@ Returns: JSON array of messages with role, timestamp, and text.`,
 
 // ── Start server ────────────────────────────────────────────────────────────
 
-export async function startMcpServer(): Promise<void> {
+export interface McpStartOptions {
+  /** Use Streamable HTTP transport instead of stdio. */
+  http?: boolean;
+  /** Port for HTTP transport. Default 7331. */
+  port?: number;
+}
+
+export async function startMcpServer(opts: McpStartOptions = {}): Promise<void> {
+  if (opts.http) {
+    const port = opts.port ?? 7331;
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+    await server.connect(transport);
+    const http = createServer((req, res) => {
+      transport.handleRequest(req, res).catch(err => {
+        res.statusCode = 500;
+        res.end(`MCP transport error: ${err?.message || err}`);
+      });
+    });
+    http.listen(port, () => {
+      process.stderr.write(`ConClear MCP server running on http://localhost:${port}/ (Streamable HTTP)\n`);
+    });
+    return;
+  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // Log to stderr so it doesn't interfere with MCP stdio protocol on stdout
