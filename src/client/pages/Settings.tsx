@@ -4,7 +4,11 @@ import { clsx } from '../lib/format';
 import { Btn } from '../components/Btn';
 import { StatusToggle } from '../components/StatusToggle';
 
-interface Props { toast: (type: 'success' | 'error', msg: string) => void }
+interface Props {
+  toast: (type: 'success' | 'error', msg: string) => void;
+  /** Navigate to the Upgrade / Pro & Teams page. */
+  onGoto?: () => void;
+}
 
 const STORAGE_KEY = 'conclear.settings';
 
@@ -61,7 +65,7 @@ function loadSettings(): UISettings {
 // Apply once on module load so the theme is right on first paint
 applyTheme(loadSettings());
 
-export function Settings({ toast }: Props) {
+export function Settings({ toast, onGoto }: Props) {
   const [s, setS] = useState<UISettings>(loadSettings);
 
   useEffect(() => {
@@ -79,6 +83,19 @@ export function Settings({ toast }: Props) {
         <div>
           <h1 className="page-title">Settings</h1>
           <p className="page-sub">ConClear reads session files directly from disk. Nothing leaves your machine.</p>
+        </div>
+      </div>
+
+      {/* Behavior */}
+      <div className="card panel" style={{ marginBottom: 'var(--gap)' }}>
+        <div className="set-row">
+          <div>
+            <div className="set-label">ConClear Pro &amp; Teams</div>
+            <div className="set-sub">AI-powered session summaries, native desktop app, team governance. Coming soon.</div>
+          </div>
+          {onGoto && (
+            <Btn icon="bolt" variant="outline" onClick={onGoto}>Learn more</Btn>
+          )}
         </div>
       </div>
 
