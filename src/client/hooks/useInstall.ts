@@ -12,15 +12,15 @@ export interface InstallStatus {
 }
 
 export interface McpServerInfo {
-  running: boolean;
-  transport: string;
-  httpRunning: boolean;
+  /** stdio MCP is spawned on demand by each client; no persistent process. */
+  stdioOnDemand: boolean;
+  /** Port that `conclear mcp --http` would bind to. */
   httpPort: number;
   tools: Array<{ name: string; desc: string }>;
   entry: unknown;
 }
 
-interface ActionResult {
+export interface ActionResult {
   ok: boolean;
   action: string;
   followUp?: string;
@@ -63,8 +63,8 @@ export function useInstall() {
     }
   }
 
-  const installMcp   = (id: string) => call('POST',   `/api/install/${id}/mcp`,   `${id}:mcp:install`);
-  const uninstallMcp = (id: string) => call('DELETE', `/api/install/${id}/mcp`,   `${id}:mcp:uninstall`);
+  const installMcp     = (id: string) => call('POST',   `/api/install/${id}/mcp`,   `${id}:mcp:install`);
+  const uninstallMcp   = (id: string) => call('DELETE', `/api/install/${id}/mcp`,   `${id}:mcp:uninstall`);
   const installSkill   = (id: string) => call('POST',   `/api/install/${id}/skill`, `${id}:skill:install`);
   const uninstallSkill = (id: string) => call('DELETE', `/api/install/${id}/skill`, `${id}:skill:uninstall`);
 

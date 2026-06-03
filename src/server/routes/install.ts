@@ -63,9 +63,10 @@ router.get('/status', async (_req: Request, res: Response) => {
 /** ConClear's MCP server description (for the Connect page's "MCP server" panel). */
 router.get('/mcp', (_req: Request, res: Response) => {
   res.json({
-    running: true,
-    transport: 'stdio',
-    httpRunning: false,
+    // stdio MCP is spawned on demand by each client; there's no
+    // persistent process to report status for. HTTP transport is
+    // started manually with `conclear mcp --http`.
+    stdioOnDemand: true,
     httpPort: 7331,
     tools: [
       { name: 'conclear_search',       desc: 'Search messages across all sessions by text query.' },
