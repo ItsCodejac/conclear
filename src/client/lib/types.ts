@@ -119,10 +119,19 @@ export interface ToolCaps {
   exportSession: boolean;
 }
 
+/**
+ * Per-tool capability matrix. Must match what each backend adapter actually
+ * implements (walked from src/server/adapters/<tool>/index.ts). If the
+ * client overstates a capability, a tab will render then 404 on load —
+ * looks broken.
+ *
+ * TODO: replace this with a runtime /api/capabilities endpoint so the client
+ * and server can't drift apart.
+ */
 export const TOOLS: Record<ToolId, { id: ToolId; label: string; short: string; caps: ToolCaps }> = {
   claude:  { id: 'claude',  label: 'Claude Code',  short: 'CLAUDE',  caps: { resize: true,  scanSecrets: true,  fileHistory: true,  exportSession: true } },
-  cursor:  { id: 'cursor',  label: 'Cursor',       short: 'CURSOR',  caps: { resize: true,  scanSecrets: true,  fileHistory: true,  exportSession: true } },
-  gemini:  { id: 'gemini',  label: 'Gemini CLI',   short: 'GEMINI',  caps: { resize: true,  scanSecrets: false, fileHistory: true,  exportSession: true } },
-  cline:   { id: 'cline',   label: 'Cline / Roo',  short: 'CLINE',   caps: { resize: false, scanSecrets: true,  fileHistory: true,  exportSession: true } },
-  copilot: { id: 'copilot', label: 'Copilot Chat', short: 'COPILOT', caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: true } },
+  cursor:  { id: 'cursor',  label: 'Cursor',       short: 'CURSOR',  caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: false } },
+  gemini:  { id: 'gemini',  label: 'Gemini CLI',   short: 'GEMINI',  caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: false } },
+  cline:   { id: 'cline',   label: 'Cline / Roo',  short: 'CLINE',   caps: { resize: true,  scanSecrets: false, fileHistory: true,  exportSession: false } },
+  copilot: { id: 'copilot', label: 'Copilot Chat', short: 'COPILOT', caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: false } },
 };
