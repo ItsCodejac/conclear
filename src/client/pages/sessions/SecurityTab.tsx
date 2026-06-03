@@ -3,7 +3,7 @@ import { clsx, sevColor } from '../../lib/format';
 import type { Session } from '../../lib/types';
 import { Btn } from '../../components/Btn';
 import { SevPill } from '../../components/SevPill';
-import { useScan } from '../../hooks/useSessionDetail';
+import { useCachedScan, redactSession } from '../../hooks/useScanCache';
 import { EmptyTab } from './EmptyTab';
 
 interface Props {
@@ -12,10 +12,12 @@ interface Props {
 }
 
 export function SecurityTab({ session, toast }: Props) {
-  const scan = useScan(session.id);
+  const scan = useCachedScan(session.id);
 
-  if (scan.loading) return <EmptyTab icon="shield" title="Scanning…" sub="Looking for pasted keys, tokens, and env dumps." />;
-  const findings = scan.data ?? [];
+  if (scan.loading && scan.findings == null) {
+    return <EmptyTab icon="shield" title="Scanning…" sub="Looking for pasted keys, tokens, and env dumps." />;
+  }
+  const findings = scan.findings ?? [];
 
   if (findings.length === 0) {
     return (
@@ -34,7 +36,11 @@ export function SecurityTab({ session, toast }: Props) {
           <b style={{ color: 'var(--danger)' }}>{findings.length}</b> secrets found — these are stored in plaintext in the session file.
         </span>
         <span style={{ flex: 1 }} />
-        <Btn icon="scissors" variant="primary" size="sm" onClick={() => toast('success', 'Redacted all secrets & wrote backup')}>
+        <Btn icon="scissors" variant="primary" size="sm" onClick={async () => {
+          const r = await redactSession(session.id, null);
+          if (r.ok) toast('success', `Redacted ${r.replaced} secret${r.replaced === 1 ? '' : 's'} — backup written`);
+          else toast('error', r.error ?? 'Redact failed');
+        }}>
           Redact all
         </Btn>
       </div>
@@ -48,9 +54,15 @@ export function SecurityTab({ session, toast }: Props) {
             </div>
             <div className="sec-ctx"><span className="red">{f.pattern}</span> · {f.context}</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="sec-line">L{f.lineNumber}</span>
             <SevPill sev={f.severity} />
+            <Btn icon="scissors" variant="ghost" size="sm" title="Redact this secret"
+              onClick={async () => {
+                const r = await redactSession(session.id, { lineNumber: f.lineNumber });
+                if (r.ok) toast('success', `Redacted ${r.replaced} secret${r.replaced === 1 ? '' : 's'} — backup written`);
+                else toast('error', r.error ?? 'Redact failed');
+              }} />
           </div>
         </div>
       ))}

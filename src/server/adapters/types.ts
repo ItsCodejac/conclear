@@ -151,6 +151,7 @@ export interface Adapter {
   getFileHistory?(sessionId: string): Promise<FileHistory[]>;
   getFileContent?(sessionId: string, lineNumber: number): Promise<string | null>;
   scanSecrets?(sessionId: string): Promise<SecretFinding[]>;
+  redactSecrets?(sessionId: string, filter: { lineNumber?: number; type?: string } | null): Promise<MutationResult & { replaced: number }>;
   exportSession?(sessionId: string): Promise<{ markdown: string; name: string | null }>;
   resizeImages?(sessionId: string, imageIds: string[] | null, targetBytes: number): Promise<MutationResult>;
   /** Adapter-specific search — overrides the default line-based search when present. */
@@ -163,6 +164,7 @@ export interface AdapterCapabilities {
   fileHistory: boolean;
   fileContent: boolean;
   scanSecrets: boolean;
+  redactSecrets: boolean;
   exportSession: boolean;
   resizeImages: boolean;
   searchMessages: boolean;
@@ -174,6 +176,7 @@ export function capabilitiesOf(adapter: Adapter): AdapterCapabilities {
     fileHistory: typeof adapter.getFileHistory === 'function',
     fileContent: typeof adapter.getFileContent === 'function',
     scanSecrets: typeof adapter.scanSecrets === 'function',
+    redactSecrets: typeof adapter.redactSecrets === 'function',
     exportSession: typeof adapter.exportSession === 'function',
     resizeImages: typeof adapter.resizeImages === 'function',
     searchMessages: typeof adapter.searchMessages === 'function',

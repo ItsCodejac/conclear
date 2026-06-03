@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Icon } from '../../lib/icons';
-import { clsx, fmtBytes, fmtNum } from '../../lib/format';
+import { clsx, fmtBytes, fmtNum, decodeProject } from '../../lib/format';
 import { TOOLS, type Session } from '../../lib/types';
 import { Btn } from '../../components/Btn';
 import { ToolBadge } from '../../components/ToolBadge';
-import { useScan } from '../../hooks/useSessionDetail';
+import { useCachedScan } from '../../hooks/useScanCache';
 import { SummaryTab } from './SummaryTab';
 import { ImagesTab } from './ImagesTab';
 import { ChatTab } from './ChatTab';
@@ -29,8 +29,8 @@ function healthColor(s: Session & { secretCount?: number; maxSeverity?: string |
 
 export function SessionDetail({ session, onClose, toast }: Props) {
   const caps = TOOLS[session.tool].caps;
-  const scan = useScan(caps.scanSecrets ? session.id : null);
-  const secretCount = scan.data?.length ?? 0;
+  const scan = useCachedScan(caps.scanSecrets ? session.id : null);
+  const secretCount = scan.findings?.length ?? 0;
 
   const tabs: Array<{ id: TabId; label: string; icon: Parameters<typeof Icon>[0]['name']; count?: number; cap?: keyof typeof caps; alert?: boolean }> = [
     { id: 'summary',  label: 'Summary',  icon: 'sparkle' },
@@ -54,7 +54,7 @@ export function SessionDetail({ session, onClose, toast }: Props) {
             </h2>
             <div className="dh-sub">
               <ToolBadge tool={session.tool} size="lg" />
-              <span>{session.project}</span>
+              <span>{decodeProject(session.project)}</span>
               <span className="dot-sep">·</span>
               <span className="mono">{session.messageCount} messages</span>
               <span className="dot-sep">·</span>

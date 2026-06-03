@@ -109,7 +109,16 @@ export function ImagesTab({ session, caps, toast }: Props) {
           return (
             <div key={img.id} className={clsx('imgcard', isStripped && 'stripped', img.oversized && 'oversized')}>
               <div className="imgthumb" onClick={() => setLb(idx)}>
-                <div className="ph" style={thumbStyle(img.hue)} />
+                {isStripped
+                  ? <div className="ph" style={thumbStyle(img.hue)} />
+                  : <img
+                      className="ph"
+                      src={`/api/sessions/${encodeURIComponent(session.id)}/images/${encodeURIComponent(img.id)}`}
+                      alt={img.context}
+                      loading="lazy"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => { (e.currentTarget.style.display = 'none'); }}
+                    />}
                 <span className="dim-badge">{img.width}×{img.height}</span>
                 {img.oversized && (
                   <span className="over-badge" title="exceeds 2000px">
@@ -141,6 +150,7 @@ export function ImagesTab({ session, caps, toast }: Props) {
 
       {lb !== null && (
         <Lightbox
+          sessionId={session.id}
           images={imgs}
           index={lb}
           strippedIds={stripped}

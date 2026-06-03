@@ -8,17 +8,22 @@ import { EmptyTab } from './EmptyTab';
 
 interface Props { session: Session }
 
+const PAGE = 200;
+
 export function TimelineTab({ session }: Props) {
   const conv = useConversation(session.id);
   const [types, setTypes] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [limit, setLimit] = useState(PAGE);
 
   if (conv.loading) return <EmptyTab icon="timeline" title="Loading timeline…" sub="Reading session events." />;
   const events = conv.data?.timeline ?? [];
   if (events.length === 0) return <EmptyTab icon="timeline" title="No timeline" sub="No structured events were parsed from this session." />;
 
   const allTypes = [...new Set(events.map(e => e.type))];
-  const shown = types.size ? events.filter(e => types.has(e.type)) : events;
+  const filtered = types.size ? events.filter(e => types.has(e.type)) : events;
+  const shown = filtered.slice(0, limit);
+  const hidden = filtered.length - shown.length;
 
   function toggleType(t: string) {
     setTypes(prev => {
@@ -53,6 +58,7 @@ export function TimelineTab({ session }: Props) {
               <div
                 className={clsx('tl-row', e.detail && 'expandable')}
                 onClick={e.detail ? () => toggleRow(e.id) : undefined}
+                style={{ cursor: e.detail ? 'pointer' : 'default' }}
               >
                 <span className="tl-time">{e.timestamp}</span>
                 <div className="tl-node">
@@ -81,6 +87,13 @@ export function TimelineTab({ session }: Props) {
           );
         })}
       </div>
+      {hidden > 0 && (
+        <div style={{ textAlign: 'center', padding: '14px 0 4px' }}>
+          <button className="chip" onClick={() => setLimit(l => l + PAGE)}>
+            Show {Math.min(PAGE, hidden)} more · {hidden} remaining
+          </button>
+        </div>
+      )}
     </div>
   );
 }

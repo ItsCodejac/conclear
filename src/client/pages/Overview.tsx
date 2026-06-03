@@ -1,6 +1,6 @@
 import { Icon } from '../lib/icons';
 import { Logo } from '../lib/Logo';
-import { fmtBytes, MB } from '../lib/format';
+import { fmtBytes, MB, decodeProject } from '../lib/format';
 import type { Session } from '../lib/types';
 import { Btn } from '../components/Btn';
 import { Meter } from '../components/Meter';
@@ -139,7 +139,7 @@ export function Overview({ sessions, onOpen, onGoto, onClean, onRescan }: Props)
               : d.problem.map(s => (
                 <div className="orow" key={s.id} onClick={() => onOpen(s.id)}>
                   <span className="owarn"><Icon name="warn" size={15} /></span>
-                  <span className="oname">{s.name ?? s.preview} <span className="op">· {s.project}</span></span>
+                  <span className="oname">{s.name ?? s.preview} <span className="op">· {decodeProject(s.project)}</span></span>
                   <span className="odim">{s.maxImageDimension}px</span>
                   <span className="ocount">{s.imageCount} img</span>
                 </div>
@@ -157,7 +157,7 @@ export function Overview({ sessions, onOpen, onGoto, onClean, onRescan }: Props)
             {d.offenders.map((s, i) => (
               <div className="orow" key={s.id} onClick={() => onOpen(s.id)}>
                 <span className="orank">{i + 1}</span>
-                <span className="oname">{s.name ?? s.preview} <span className="op">· {s.project}</span></span>
+                <span className="oname">{s.name ?? s.preview} <span className="op">· {decodeProject(s.project)}</span></span>
                 <span className={szClass(s.imageSizeBytes, 10 * MB)}>{fmtBytes(s.imageSizeBytes)}</span>
                 <span className="ocount">{s.imageCount} img</span>
               </div>
@@ -192,7 +192,7 @@ export function Overview({ sessions, onOpen, onGoto, onClean, onRescan }: Props)
               {d.bloated.slice(0, 4).map(s => (
                 <div className="orow" key={s.id} onClick={() => onOpen(s.id)}>
                   <span className="owarn" style={{ color: 'var(--warn)' }}><Icon name="bash" size={14} /></span>
-                  <span className="oname">{s.name ?? s.preview} <span className="op">· {s.project}</span></span>
+                  <span className="oname">{s.name ?? s.preview} <span className="op">· {decodeProject(s.project)}</span></span>
                   <span className="odim" style={{ color: 'var(--muted)' }}>
                     {Math.round((s.imageSizeBytes / s.totalSizeBytes) * 100)}% img
                   </span>

@@ -1,7 +1,7 @@
 {
   "name": "conclear",
   "description": "Visual utility for cleaning AI coding assistant session data",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "license": "MIT",
   "author": "Cojac",

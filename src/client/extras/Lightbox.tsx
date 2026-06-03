@@ -16,6 +16,8 @@ export interface LBImage {
 }
 
 interface Props {
+  /** Session ID the images belong to — used to build the API URL for the lightbox source. */
+  sessionId: string;
   images: LBImage[];
   index: number;
   strippedIds: Set<string>;
@@ -31,7 +33,7 @@ export function thumbStyle(hue: number): React.CSSProperties {
   return { background: `linear-gradient(135deg, hsl(${hue} 45% 32%), hsl(${(hue + 40) % 360} 50% 20%))` };
 }
 
-export function Lightbox({ images, index, strippedIds, caps, onIndex, onClose, onStrip, onResize, onRecover }: Props) {
+export function Lightbox({ sessionId, images, index, strippedIds, caps, onIndex, onClose, onStrip, onResize, onRecover }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -55,10 +57,17 @@ export function Lightbox({ images, index, strippedIds, caps, onIndex, onClose, o
               <Icon name="chevron" size={22} style={{ transform: 'rotate(180deg)' }} />
             </button>
           )}
-          <div className="lb-image" style={isStripped ? undefined : thumbStyle(img.hue)}>
+          <div className="lb-image" style={isStripped ? undefined : { background: '#0a0c0b' }}>
             {isStripped
               ? <div className="lb-stripped"><Icon name="check" size={26} /><span>Stripped — replaced with placeholder</span></div>
-              : <span className="lb-dim mono">{img.width} × {img.height}</span>}
+              : <>
+                  <img
+                    src={`/api/sessions/${encodeURIComponent(sessionId)}/images/${encodeURIComponent(img.id)}`}
+                    alt={img.context}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
+                  <span className="lb-dim mono">{img.width} × {img.height}</span>
+                </>}
           </div>
           {index < images.length - 1 && (
             <button className="lb-nav right" onClick={() => onIndex(index + 1)}>

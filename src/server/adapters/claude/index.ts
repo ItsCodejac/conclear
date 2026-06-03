@@ -1,7 +1,7 @@
 import { Adapter, Session, SessionDetail, ImageData } from '../types.js';
 import type { ParsedConversation } from './parser.js';
 import type { FileHistory } from '../types.js';
-import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeImagesInContent, getImageData as getImageDataFromFile, restoreImageData, parseConversation, parseFileHistory, getFileContent as getFileContentFromFile, exportSessionMarkdown, scanForSecrets } from './parser.js';
+import { parseSessionFile, parseSessionDetail, stripImagesFromContent, resizeImagesInContent, getImageData as getImageDataFromFile, restoreImageData, parseConversation, parseFileHistory, getFileContent as getFileContentFromFile, exportSessionMarkdown, scanForSecrets, redactSecretsInFile } from './parser.js';
 import type { SecretFinding } from '../types.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
@@ -296,6 +296,21 @@ export class ClaudeAdapter implements Adapter {
   async scanSecrets(sessionId: string): Promise<SecretFinding[]> {
     const filePath = await this.findSessionFile(sessionId);
     return scanForSecrets(filePath);
+  }
+
+  async redactSecrets(
+    sessionId: string,
+    filter: { lineNumber?: number; type?: string } | null,
+  ): Promise<{ backupPath: string; bytesReclaimed: number; replaced: number }> {
+    const filePath = await this.findSessionFile(sessionId);
+    const backupPath = await createBackup(filePath);
+    const { content, replaced } = await redactSecretsInFile(filePath, filter);
+    if (replaced === 0) return { backupPath, bytesReclaimed: 0, replaced: 0 };
+
+    const origSize = (await fsStat(filePath)).size;
+    await writeFile(filePath, content, 'utf-8');
+    const newSize = Buffer.byteLength(content, 'utf-8');
+    return { backupPath, bytesReclaimed: origSize - newSize, replaced };
   }
 
   async exportSession(sessionId: string): Promise<{ markdown: string; name: string | null }> {

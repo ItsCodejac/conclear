@@ -1628,6 +1628,47 @@ export async function scanForSecrets(filePath: string): Promise<SecretFinding[]>
 }
 
 /**
+ * Rewrite a session file in place, replacing any secrets the scanner matches
+ * with `****REDACTED****`. Returns the number of replacements and the new
+ * file content (caller is responsible for writing + backup).
+ *
+ * Optional filter limits redaction to a specific line / pattern (used by the
+ * per-finding redact button). When the filter is null, every match is redacted.
+ */
+export interface RedactFilter { lineNumber?: number; type?: string }
+
+export async function redactSecretsInFile(
+  filePath: string,
+  filter: RedactFilter | null,
+): Promise<{ content: string; replaced: number }> {
+  const original = await readFile(filePath, 'utf-8');
+  const lines = original.split('\n');
+  let replaced = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    if (filter?.lineNumber != null && (i + 1) !== filter.lineNumber) continue;
+
+    let line = lines[i];
+    for (const pattern of SECRET_PATTERNS) {
+      if (filter?.type && filter.type !== pattern.type) continue;
+      pattern.regex.lastIndex = 0;
+      line = line.replace(pattern.regex, (match) => {
+        if (pattern.nearbyKeyword) {
+          // Skip nearby-keyword patterns when filter is broad — too aggressive otherwise.
+          if (!pattern.nearbyKeyword.test(lines[i])) return match;
+        }
+        replaced++;
+        return '****REDACTED****';
+      });
+    }
+    lines[i] = line;
+  }
+
+  return { content: lines.join('\n'), replaced };
+}
+
+/**
  * Read a specific line from a JSONL file and extract the file content from it.
  * Used to fetch full file content on demand for the file version viewer.
  */

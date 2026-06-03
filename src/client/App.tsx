@@ -6,6 +6,7 @@ import { TOOLS, type ToolId } from './lib/types';
 import { useSessions } from './hooks/useSessions';
 import { useDerived } from './hooks/useDerived';
 import { useToasts } from './hooks/useToasts';
+import { useScanCache } from './hooks/useScanCache';
 import { Overview } from './pages/Overview';
 import { Sessions } from './pages/Sessions';
 import { Security } from './pages/Security';
@@ -40,6 +41,7 @@ export function App() {
   const { sessions, loading, refresh } = useSessions();
   const derived = useDerived(sessions);
   const { toasts, toast } = useToasts();
+  const scan = useScanCache(sessions);
 
   const [page, setPage] = useState<PageId>('overview');
   const [projFilter, setProjFilter] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export function App() {
   const installedClients = CLIENTS.filter(c => c.mcpInstalled).length;
   const navCounts: Partial<Record<PageId, number>> = {
     sessions: sessions.length,
-    security: derived.totalSecrets,
+    security: scan.totalFindings,
     connect:  installedClients,
     backups:  0,
   };
@@ -103,8 +105,8 @@ export function App() {
           </div>
         </div>
         <div className="tb-right">
-          <div className="mcp-chip" title="ConClear MCP server is running" onClick={() => setPage('connect')}>
-            <span className="live-dot live" /> MCP
+          <div className="mcp-chip" title="ConClear MCP is spawned on demand by installed clients" onClick={() => setPage('connect')}>
+            <Icon name="cpu" size={12} /> MCP
           </div>
           <span className="pg-meta">{fmtBytes(derived.totalSize)}</span>
           <button className="iconbtn" title="Rescan (⌘R)" onClick={rescan}><Icon name="refresh" size={16} /></button>
@@ -170,7 +172,7 @@ export function App() {
             <>
               {page === 'overview' && <Overview sessions={sessions} onOpen={openSession} onGoto={gotoSessions} onRescan={rescan} onClean={() => toast('success', `Queued ${derived.problem.length} sessions — resizing oversized images`)} />}
               {page === 'sessions' && <Sessions sessions={sessions} projectFilter={projFilter} openId={openId} onOpenId={setOpenId} toast={toast} />}
-              {page === 'security' && <Security sessions={sessions} onOpen={openSession} />}
+              {page === 'security' && <Security sessions={sessions} scan={scan} onOpen={openSession} toast={toast} />}
               {page === 'connect'  && <Connect toast={toast} />}
               {page === 'backups'  && <Backups toast={toast} />}
               {page === 'settings' && <Settings toast={toast} onGoto={() => setPage('upgrade')} />}

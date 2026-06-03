@@ -180,6 +180,28 @@ router.get('/sessions/:id/scan', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/sessions/:id/redact', async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as { lineNumber?: number; type?: string };
+    const filter = (body.lineNumber != null || body.type) ? body : null;
+    for (const adapter of adapters) {
+      if (await adapter.detect()) {
+        try {
+          if (!adapter.redactSecrets) throw new Error('not supported');
+          const result = await adapter.redactSecrets(param(req, 'id'), filter);
+          res.json(result);
+          return;
+        } catch {
+          // try next adapter
+        }
+      }
+    }
+    res.status(404).json({ error: 'Session not found or adapter does not support redact' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.get('/sessions/:id/export', async (req: Request, res: Response) => {
   try {
     for (const adapter of adapters) {

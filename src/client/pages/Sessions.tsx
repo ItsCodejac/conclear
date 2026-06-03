@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../lib/icons';
-import { clsx, fmtBytes, relTime, MB } from '../lib/format';
+import { clsx, fmtBytes, relTime, MB, decodeProject } from '../lib/format';
 import { TOOLS, type Session, type ToolId } from '../lib/types';
 import { ToolBadge } from '../components/ToolBadge';
 import { Meter } from '../components/Meter';
@@ -158,7 +158,7 @@ export function Sessions({ sessions, projectFilter, openId, onOpenId, toast }: P
           {grouped.map(g => (
             <div key={g.project}>
               <div className="proj-group-head">
-                <span className="pg-name">{g.project}</span>
+                <span className="pg-name">{decodeProject(g.project)}</span>
                 <span className="pg-meta">{g.sessions.length} · {g.images} img</span>
                 <span className="pg-bar"><Meter value={g.size} max={maxGroup} h={4} color="var(--surface-3)" /></span>
                 <span className="pg-meta">{fmtBytes(g.size)}</span>

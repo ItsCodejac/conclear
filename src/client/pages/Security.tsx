@@ -1,76 +1,81 @@
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { Icon } from '../lib/icons';
-import { clsx, sevColor } from '../lib/format';
-import { TOOLS, type Session, type SecretFinding } from '../lib/types';
+import { clsx, sevColor, decodeProject } from '../lib/format';
+import { TOOLS, type Session } from '../lib/types';
 import { Btn } from '../components/Btn';
 import { ToolBadge } from '../components/ToolBadge';
 import { SevPill } from '../components/SevPill';
+import type { useScanCache } from '../hooks/useScanCache';
 
 interface Props {
   sessions: Session[];
+  scan: ReturnType<typeof useScanCache>;
   onOpen: (id: string) => void;
+  toast: (type: 'success' | 'error', msg: string) => void;
 }
 
-interface ScannedSession {
-  session: Session;
-  findings: SecretFinding[];
-}
-
-/** Lazily scan each scannable session via /api/sessions/:id/scan. */
-function useOrgScan(sessions: Session[]) {
-  const [rows, setRows] = useState<ScannedSession[]>([]);
-  const [scanning, setScanning] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function go() {
-      setScanning(true);
-      const scannable = sessions.filter(s => TOOLS[s.tool].caps.scanSecrets);
-      const out: ScannedSession[] = [];
-      for (const s of scannable) {
-        try {
-          const res = await fetch(`/api/sessions/${encodeURIComponent(s.id)}/scan`);
-          if (res.ok) {
-            const findings = (await res.json()) as SecretFinding[];
-            if (findings.length > 0) out.push({ session: s, findings });
-          }
-        } catch { /* ignore */ }
-        if (cancelled) return;
-      }
-      if (!cancelled) {
-        out.sort((a, b) => b.findings.length - a.findings.length);
-        setRows(out);
-        setScanning(false);
-      }
-    }
-    void go();
-    return () => { cancelled = true; };
-  }, [sessions]);
-
-  return { rows, scanning };
-}
-
-export function Security({ sessions, onOpen }: Props) {
-  const { rows, scanning } = useOrgScan(sessions);
-  const total = rows.reduce((n, r) => n + r.findings.length, 0);
-  const high = rows.reduce((n, r) => n + r.findings.filter(f => f.severity === 'high').length, 0);
+export function Security({ sessions, scan, onOpen, toast }: Props) {
+  const sessionsById = useMemo(() => new Map(sessions.map(s => [s.id, s])), [sessions]);
   const scannable = sessions.filter(s => TOOLS[s.tool].caps.scanSecrets).length;
+  const scannedCount = Object.keys(scan.cache.results).length;
+
+  const rows = useMemo(() => {
+    return scan.sessionsWithFindings
+      .map(id => ({
+        session: sessionsById.get(id),
+        findings: scan.cache.results[id] ?? [],
+      }))
+      .filter(r => r.session)
+      .sort((a, b) => b.findings.length - a.findings.length) as Array<{ session: Session; findings: NonNullable<ReturnType<typeof scan.cache.results['']>> }>;
+  }, [scan.sessionsWithFindings, scan.cache.results, sessionsById]);
+
+  const total = scan.totalFindings;
+  const high = scan.highSeverity;
+
+  async function redactAll() {
+    const targets = rows.map(r => r.session.id);
+    if (targets.length === 0) return;
+    let total = 0;
+    let failed = 0;
+    for (const id of targets) {
+      const r = await scan.redact(id, null);
+      if (r.ok) total += r.replaced; else failed++;
+    }
+    if (failed > 0) toast('error', `Redacted ${total} secrets · ${failed} session${failed === 1 ? '' : 's'} failed`);
+    else toast('success', `Redacted ${total} secret${total === 1 ? '' : 's'} across ${targets.length} session${targets.length === 1 ? '' : 's'} — backups in ~/.conclear/backups`);
+  }
+
+  async function redactOne(id: string, lineNumber: number) {
+    const r = await scan.redact(id, { lineNumber });
+    if (r.ok) toast('success', `Redacted ${r.replaced} secret${r.replaced === 1 ? '' : 's'} — backup written`);
+    else toast('error', r.error ?? 'Redact failed');
+  }
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
           <h1 className="page-title">Security</h1>
-          <p className="page-sub">Secrets the scanner found pasted into session files — keys, tokens, env dumps.</p>
+          <p className="page-sub">
+            Secrets the scanner found pasted into session files — keys, tokens, env dumps.
+            {scan.scanning && <> · <span style={{ color: 'var(--muted)' }}>scanning {scannedCount} / {scannable}…</span></>}
+          </p>
         </div>
-        <div className="page-actions"><Btn icon="refresh" variant="ghost">Rescan all</Btn></div>
+        <div className="page-actions">
+          <Btn icon="refresh" variant="ghost" onClick={() => void scan.refresh(true)}>Rescan all</Btn>
+          {total > 0 && (
+            <Btn icon="scissors" variant="primary" danger onClick={redactAll}>
+              Redact all
+            </Btn>
+          )}
+        </div>
       </div>
 
       <div className="grid-3" style={{ marginBottom: 'var(--gap)' }}>
         <div className="card statcard dangerstat">
           <div className="s-label"><Icon name="key" size={14} /> Secrets found</div>
           <div className="s-val">{total}</div>
-          <div className="s-sub">across {rows.length} sessions</div>
+          <div className="s-sub">across {rows.length} session{rows.length === 1 ? '' : 's'}</div>
         </div>
         <div className="card statcard">
           <div className="s-label"><Icon name="warn" size={14} /> High severity</div>
@@ -78,13 +83,13 @@ export function Security({ sessions, onOpen }: Props) {
           <div className="s-sub">act on these first</div>
         </div>
         <div className="card statcard">
-          <div className="s-label"><Icon name="shield" size={14} /> Scannable</div>
-          <div className="s-val reclaim-num">{scannable}</div>
-          <div className="s-sub">of {sessions.length} sessions support scanning</div>
+          <div className="s-label"><Icon name="shield" size={14} /> Scanned</div>
+          <div className="s-val reclaim-num">{scannedCount}<span style={{ fontSize: 18, color: 'var(--muted)' }}>/{scannable}</span></div>
+          <div className="s-sub">{scannable} of {sessions.length} sessions support scanning</div>
         </div>
       </div>
 
-      {scanning && rows.length === 0 && (
+      {scan.scanning && rows.length === 0 && (
         <div className="empty-state">
           <div className="es-ico"><Icon name="shield" size={26} /></div>
           <div className="es-title">Scanning…</div>
@@ -92,7 +97,7 @@ export function Security({ sessions, onOpen }: Props) {
         </div>
       )}
 
-      {!scanning && rows.length === 0 && (
+      {!scan.scanning && scannedCount === scannable && rows.length === 0 && (
         <div className="empty-state">
           <div className="es-ico" style={{ color: 'var(--accent)' }}><Icon name="check" size={26} /></div>
           <div className="es-title">No secrets detected</div>
@@ -105,7 +110,7 @@ export function Security({ sessions, onOpen }: Props) {
           <div className="panel-head" style={{ marginBottom: 10 }}>
             <div className="panel-title" style={{ fontSize: 14 }}>
               <span style={{ cursor: 'pointer' }} onClick={() => onOpen(session.id)}>{session.name ?? session.preview}</span>
-              <span className="pg-meta">· {session.project}</span>
+              <span className="pg-meta">· {decodeProject(session.project)}</span>
               <ToolBadge tool={session.tool} />
             </div>
             <span className="panel-link" onClick={() => onOpen(session.id)}>
@@ -122,9 +127,13 @@ export function Security({ sessions, onOpen }: Props) {
                 </div>
                 <div className="sec-ctx"><span className="red">{f.pattern}</span> · {f.context}</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="sec-line">L{f.lineNumber}</span>
                 <SevPill sev={f.severity} />
+                <Btn icon="scissors" variant="ghost" size="sm" title="Redact this secret"
+                  onClick={() => void redactOne(session.id, f.lineNumber)} />
+                <Btn icon="chevron" variant="ghost" size="sm" title="Open in chat"
+                  onClick={() => onOpen(session.id)} />
               </div>
             </div>
           ))}
