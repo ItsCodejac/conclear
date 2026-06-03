@@ -1,48 +1,38 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { Session } from '../types';
+import { useEffect, useState, useCallback } from 'react';
+import type { Session } from '../lib/types';
 
-const CACHE_KEY = 'conclear:sessions';
-
-function loadCache(): Session[] {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // corrupt cache
-  }
-  return [];
+interface State {
+  sessions: Session[];
+  loading: boolean;
+  error: string | null;
 }
 
-function saveCache(sessions: Session[]) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(sessions));
-  } catch {
-    // storage full or unavailable
-  }
-}
+export function useSessions(): State & { refresh: () => Promise<void> } {
+  const [state, setState] = useState<State>({ sessions: [], loading: true, error: null });
 
-export function useSessions() {
-  const [sessions, setSessions] = useState<Session[]>(loadCache);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetch_ = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchSessions = useCallback(async (refresh = false): Promise<void> => {
+    setState(s => ({ ...s, loading: true }));
     try {
-      const res = await fetch('/api/sessions');
+      const url = refresh ? '/api/sessions?refresh=true' : '/api/sessions';
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setSessions(data);
-      saveCache(data);
+      const sessions = (await res.json()) as Session[];
+      // Add UI-only fields the design expects but the API doesn't currently send:
+      // toolResultSizeBytes split + secret count are placeholders until detail loads.
+      const enriched = sessions.map(s => ({
+        ...s,
+        toolResultSizeBytes: Math.round((s.totalSizeBytes - s.imageSizeBytes) * (s.imageCount > 0 ? 0.55 : 0.82)),
+        textSizeBytes: Math.round((s.totalSizeBytes - s.imageSizeBytes) * (s.imageCount > 0 ? 0.45 : 0.18)),
+        secretCount: 0,
+        maxSeverity: null,
+      } as Session & { toolResultSizeBytes: number; textSizeBytes: number; secretCount: number; maxSeverity: string | null }));
+      setState({ sessions: enriched, loading: false, error: null });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
+      setState({ sessions: [], loading: false, error: err instanceof Error ? err.message : String(err) });
     }
   }, []);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => { void fetchSessions(); }, [fetchSessions]);
 
-  return { sessions, loading, error, refresh: fetch_ };
+  return { ...state, refresh: () => fetchSessions(true) };
 }
