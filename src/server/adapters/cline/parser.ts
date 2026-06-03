@@ -1,6 +1,7 @@
-import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileHistory, FileVersion } from '../types.js';
+import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, TimelineEventType, FileHistory, FileVersion, SecretFinding } from '../types.js';
 import { readFile, stat } from 'fs/promises';
 import sharp from 'sharp';
+import { scanText, redactText, sortFindings, type RedactFilter } from '../secrets.js';
 
 /**
  * Cline / Roo Code session format:
@@ -954,4 +955,139 @@ export async function parseConversation(apiPath: string): Promise<ClineParsedCon
   }
 
   return { messages, timeline };
+}
+
+// ── Secret scanning + redact ────────────────────────────────────────────────
+
+/**
+ * Walk the Cline conversation array, scan every text-bearing block for secrets.
+ * `lineNumber` on findings is the index in the message array (0-based, +1 for
+ * display) — Cline's file is a JSON array, not JSONL, so there's no real line.
+ */
+export async function scanClineSecrets(apiPath: string): Promise<SecretFinding[]> {
+  const findings: SecretFinding[] = [];
+  const seen = new Set<string>();
+  try {
+    const raw = await readFile(apiPath, 'utf-8');
+    const messages: ApiMessage[] = JSON.parse(raw);
+    for (let i = 0; i < messages.length; i++) {
+      const blocks = messages[i].content;
+      if (typeof blocks === 'string') {
+        findings.push(...scanText(blocks, i + 1, seen));
+        continue;
+      }
+      if (!Array.isArray(blocks)) continue;
+      for (const b of blocks) {
+        if (b.type === 'text' && typeof b.text === 'string') {
+          findings.push(...scanText(b.text, i + 1, seen));
+        } else if (b.type === 'tool_use' && b.input) {
+          findings.push(...scanText(JSON.stringify(b.input), i + 1, seen));
+        } else if (b.type === 'tool_result') {
+          if (typeof b.content === 'string') {
+            findings.push(...scanText(b.content, i + 1, seen));
+          } else if (Array.isArray(b.content)) {
+            for (const c of b.content) {
+              if (c.type === 'text' && typeof c.text === 'string') {
+                findings.push(...scanText(c.text, i + 1, seen));
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch { /* parse error */ }
+  return sortFindings(findings);
+}
+
+/**
+ * Rewrite the Cline conversation file in place, redacting matched secrets.
+ * `filter.lineNumber` selects a single message (1-based to match findings).
+ */
+export async function redactClineSecrets(
+  apiPath: string,
+  filter: RedactFilter | null,
+): Promise<{ replaced: number }> {
+  const raw = await readFile(apiPath, 'utf-8');
+  const messages: ApiMessage[] = JSON.parse(raw);
+  let replaced = 0;
+
+  function applyToString(s: string): string {
+    const r = redactText(s, filter);
+    replaced += r.replaced;
+    return r.text;
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    if (filter?.lineNumber != null && (i + 1) !== filter.lineNumber) continue;
+    const blocks = messages[i].content;
+    if (typeof blocks === 'string') {
+      messages[i].content = applyToString(blocks);
+      continue;
+    }
+    if (!Array.isArray(blocks)) continue;
+    for (const b of blocks) {
+      if (b.type === 'text' && typeof b.text === 'string') {
+        b.text = applyToString(b.text);
+      } else if (b.type === 'tool_use' && b.input) {
+        // Round-trip via JSON so we hit values inside the input object.
+        const inputStr = applyToString(JSON.stringify(b.input));
+        try { b.input = JSON.parse(inputStr); } catch { /* keep original on parse failure */ }
+      } else if (b.type === 'tool_result') {
+        if (typeof b.content === 'string') {
+          b.content = applyToString(b.content);
+        } else if (Array.isArray(b.content)) {
+          for (const c of b.content) {
+            if (c.type === 'text' && typeof c.text === 'string') {
+              c.text = applyToString(c.text);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (replaced > 0) {
+    // Match the original formatting (pretty-printed JSON) to keep diffs sane.
+    await import('fs/promises').then(fs => fs.writeFile(apiPath, JSON.stringify(messages, null, 2), 'utf-8'));
+  }
+  return { replaced };
+}
+
+// ── Markdown export ────────────────────────────────────────────────────────
+
+/**
+ * Render a Cline conversation as plain markdown. Same shape as Claude's
+ * `exportSessionMarkdown`: H1 with the session id, then alternating
+ * **User** / **Assistant** sections.
+ */
+export async function exportClineMarkdown(apiPath: string, taskId: string, taskName: string | null): Promise<string> {
+  const out: string[] = [];
+  out.push(`# ${taskName ?? taskId}`, '');
+  try {
+    const raw = await readFile(apiPath, 'utf-8');
+    const messages: ApiMessage[] = JSON.parse(raw);
+    for (const msg of messages) {
+      const heading = msg.role === 'assistant' ? '## Assistant' : '## User';
+      out.push(heading, '');
+      if (typeof msg.content === 'string') {
+        out.push(msg.content, '');
+        continue;
+      }
+      if (!Array.isArray(msg.content)) continue;
+      for (const b of msg.content) {
+        if (b.type === 'text' && b.text) {
+          out.push(b.text, '');
+        } else if (b.type === 'tool_use') {
+          const name = b.name || 'tool';
+          const arg = (b.input?.path || b.input?.file_path || b.input?.command || '') as string;
+          out.push(`> *tool: ${name}${arg ? ` — ${arg}` : ''}*`, '');
+        } else if (b.type === 'image') {
+          out.push('> *(image)*', '');
+        } else if (b.type === 'tool_result' && typeof b.content === 'string' && b.content.length < 4000) {
+          out.push('```', b.content, '```', '');
+        }
+      }
+    }
+  } catch { /* fall through with whatever we have */ }
+  return out.join('\n');
 }

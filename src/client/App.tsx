@@ -170,7 +170,7 @@ export function App() {
             </div>
           ) : (
             <>
-              {page === 'overview' && <Overview sessions={sessions} onOpen={openSession} onGoto={gotoSessions} onRescan={rescan} onClean={() => toast('success', `Queued ${derived.problem.length} sessions — resizing oversized images`)} />}
+              {page === 'overview' && <Overview sessions={sessions} onOpen={openSession} onGoto={gotoSessions} onRescan={rescan} onClean={() => toast('success', `Queued ${derived.problem.length} sessions — resizing oversized images`)} onConnect={() => setPage('connect')} />}
               {page === 'sessions' && <Sessions sessions={sessions} projectFilter={projFilter} openId={openId} onOpenId={setOpenId} toast={toast} />}
               {page === 'security' && <Security sessions={sessions} scan={scan} onOpen={openSession} toast={toast} />}
               {page === 'connect'  && <Connect toast={toast} />}

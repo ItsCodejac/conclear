@@ -7,6 +7,7 @@ import { Meter } from '../components/Meter';
 import { SegBar } from '../components/SegBar';
 import { ToolBadge } from '../components/ToolBadge';
 import { useDerived } from '../hooks/useDerived';
+import { OnboardingBanner } from '../extras/OnboardingBanner';
 
 interface Props {
   sessions: Session[];
@@ -14,6 +15,7 @@ interface Props {
   onGoto: (project?: string) => void;
   onClean: () => void;
   onRescan: () => void;
+  onConnect: () => void;
 }
 
 function pctColor(p: number): string {
@@ -23,7 +25,7 @@ function szClass(b: number, big: number): string {
   return b >= big ? 'sz sz-hot' : b >= big / 3 ? 'sz sz-warm' : 'sz sz-cool';
 }
 
-export function Overview({ sessions, onOpen, onGoto, onClean, onRescan }: Props) {
+export function Overview({ sessions, onOpen, onGoto, onClean, onRescan, onConnect }: Props) {
   const d = useDerived(sessions);
   const reclaimPct = d.totalSize > 0 ? (d.totalImageBytes / d.totalSize) * 100 : 0;
   const maxProj = d.byProject[0]?.size || 1;
@@ -40,6 +42,8 @@ export function Overview({ sessions, onOpen, onGoto, onClean, onRescan }: Props)
           <Btn icon="refresh" variant="ghost" onClick={onRescan}>Rescan</Btn>
         </div>
       </div>
+
+      <OnboardingBanner onConnect={onConnect} />
 
       {/* hero */}
       <div className="hero">

@@ -11,7 +11,7 @@ import { BACKUP_DIR } from '../constants.js';
 const CLAUDE_DIR = join(effectiveHome(), '.claude', 'projects');
 const CLAUDE_SESSIONS_DIR = join(effectiveHome(), '.claude', 'sessions');
 
-async function createBackup(filePath: string): Promise<string> {
+async function createBackup(filePath: string, action: string = 'mutate'): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -25,6 +25,13 @@ async function createBackup(filePath: string): Promise<string> {
   if (origStats.size !== backupStats.size) {
     throw new Error(`Backup verification failed: size mismatch (${origStats.size} vs ${backupStats.size})`);
   }
+
+  // Sidecar so we can restore later without having to reverse-engineer the path.
+  await writeFile(`${backupPath}.meta.json`, JSON.stringify({
+    origPath: filePath,
+    action,
+    createdAt: Date.now(),
+  }, null, 2), 'utf-8');
 
   return backupPath;
 }
@@ -214,7 +221,7 @@ export class ClaudeAdapter implements Adapter {
     const detail = await this.getSessionDetail(sessionId);
 
     // Always create a timestamped backup first, verify it
-    const backupPath = await createBackup(detail.filePath);
+    const backupPath = await createBackup(detail.filePath, 'strip');
 
     const content = await readFile(detail.filePath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -236,7 +243,7 @@ export class ClaudeAdapter implements Adapter {
     const detail = await this.getSessionDetail(sessionId);
 
     // Always create a timestamped backup first, verify it
-    const backupPath = await createBackup(detail.filePath);
+    const backupPath = await createBackup(detail.filePath, 'strip');
 
     const content = await readFile(detail.filePath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -259,7 +266,7 @@ export class ClaudeAdapter implements Adapter {
     targetBytes: number,
   ): Promise<{ backupPath: string; bytesReclaimed: number }> {
     const filePath = await this.findSessionFile(sessionId);
-    const backupPath = await createBackup(filePath);
+    const backupPath = await createBackup(filePath, 'resize');
 
     const content = await readFile(filePath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -303,7 +310,7 @@ export class ClaudeAdapter implements Adapter {
     filter: { lineNumber?: number; type?: string } | null,
   ): Promise<{ backupPath: string; bytesReclaimed: number; replaced: number }> {
     const filePath = await this.findSessionFile(sessionId);
-    const backupPath = await createBackup(filePath);
+    const backupPath = await createBackup(filePath, 'redact');
     const { content, replaced } = await redactSecretsInFile(filePath, filter);
     if (replaced === 0) return { backupPath, bytesReclaimed: 0, replaced: 0 };
 

@@ -423,6 +423,96 @@ Returns: JSON array of messages with role, timestamp, and text.`,
   },
 );
 
+// ── Tool: conclear_scan_secrets ─────────────────────────────────────────────
+
+server.registerTool(
+  'conclear_scan_secrets',
+  {
+    title: 'Scan ConClear Session for Leaked Credentials',
+    description: `Scan a session file for pasted API keys, tokens, AWS credentials, GitHub PATs, .env dumps, and other secrets.
+
+Returns matches with the credential redacted (first 4 / last 4 chars only) so the agent can describe what leaked without re-exposing it.
+
+Args:
+  - session (string): Session name, ID, or partial match
+
+Returns: JSON array of findings with type, severity, redacted pattern, line number, and surrounding context. Empty array if nothing matched.`,
+    inputSchema: {
+      session: z.string().min(1).describe('Session name, ID, or partial match'),
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async ({ session: sessionQuery }) => {
+    try {
+      const session = await resolveSession(sessionQuery);
+      if (!session) {
+        return { content: [{ type: 'text' as const, text: `Error: Session not found for query "${sessionQuery}".` }] };
+      }
+      const a = await findAdapterFor(session);
+      if (!a?.scanSecrets) {
+        return { content: [{ type: 'text' as const, text: `Secret scanning is not yet supported for ${session.tool} sessions. Supported today: Claude Code.` }] };
+      }
+      const findings = await a.scanSecrets(session.id);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(findings, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+);
+
+// ── Tool: conclear_files ────────────────────────────────────────────────────
+
+server.registerTool(
+  'conclear_files',
+  {
+    title: 'List Files Touched in a ConClear Session',
+    description: `List every file that was read, edited, or written during a session, with version count per file.
+
+Use this before conclear_file_content when you don't know the exact path — lets you pick the file you want by name, then fetch its content.
+
+Args:
+  - session (string): Session name, ID, or partial match
+
+Returns: JSON array of files with filePath, operation (latest), versionCount, and timestamps.`,
+    inputSchema: {
+      session: z.string().min(1).describe('Session name, ID, or partial match'),
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async ({ session: sessionQuery }) => {
+    try {
+      const session = await resolveSession(sessionQuery);
+      if (!session) {
+        return { content: [{ type: 'text' as const, text: `Error: Session not found for query "${sessionQuery}".` }] };
+      }
+      const a = await findAdapterFor(session);
+      if (!a?.getFileHistory) {
+        return { content: [{ type: 'text' as const, text: `File history is not yet supported for ${session.tool} sessions. Supported today: Claude Code, Cline / Roo Code.` }] };
+      }
+      const histories = await a.getFileHistory(session.id);
+      const data = histories.map(h => ({
+        filePath: h.filePath,
+        versionCount: h.versions.length,
+        latestOperation: h.versions[h.versions.length - 1]?.operation,
+        latestTimestamp: h.versions[h.versions.length - 1]?.timestamp,
+      }));
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+);
+
 // ── Start server ────────────────────────────────────────────────────────────
 
 export interface McpStartOptions {

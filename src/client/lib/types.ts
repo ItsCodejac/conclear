@@ -109,6 +109,9 @@ export interface BackupItem {
   sizeBytes: number;
   createdAt: number;
   path: string;
+  origPath?: string;
+  action?: string;
+  canRestore?: boolean;
 }
 
 /* ── Per-tool capability matrix (mirrors capabilitiesOf on the server) ── */
@@ -130,8 +133,8 @@ export interface ToolCaps {
  */
 export const TOOLS: Record<ToolId, { id: ToolId; label: string; short: string; caps: ToolCaps }> = {
   claude:  { id: 'claude',  label: 'Claude Code',  short: 'CLAUDE',  caps: { resize: true,  scanSecrets: true,  fileHistory: true,  exportSession: true } },
-  cursor:  { id: 'cursor',  label: 'Cursor',       short: 'CURSOR',  caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: false } },
-  gemini:  { id: 'gemini',  label: 'Gemini CLI',   short: 'GEMINI',  caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: false } },
-  cline:   { id: 'cline',   label: 'Cline / Roo',  short: 'CLINE',   caps: { resize: true,  scanSecrets: false, fileHistory: true,  exportSession: false } },
+  cursor:  { id: 'cursor',  label: 'Cursor',       short: 'CURSOR',  caps: { resize: false, scanSecrets: true,  fileHistory: false, exportSession: false } },
+  gemini:  { id: 'gemini',  label: 'Gemini CLI',   short: 'GEMINI',  caps: { resize: false, scanSecrets: true,  fileHistory: false, exportSession: true  } },
+  cline:   { id: 'cline',   label: 'Cline / Roo',  short: 'CLINE',   caps: { resize: true,  scanSecrets: true,  fileHistory: true,  exportSession: true  } },
   copilot: { id: 'copilot', label: 'Copilot Chat', short: 'COPILOT', caps: { resize: false, scanSecrets: false, fileHistory: false, exportSession: false } },
 };

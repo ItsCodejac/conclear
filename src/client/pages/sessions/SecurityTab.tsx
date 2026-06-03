@@ -4,6 +4,7 @@ import type { Session } from '../../lib/types';
 import { Btn } from '../../components/Btn';
 import { SevPill } from '../../components/SevPill';
 import { useCachedScan, redactSession } from '../../hooks/useScanCache';
+import { rotationFor } from '../../lib/rotate';
 import { EmptyTab } from './EmptyTab';
 
 interface Props {
@@ -53,6 +54,15 @@ export function SecurityTab({ session, toast }: Props) {
               <span className="tag" style={{ marginLeft: 6 }}>{f.type}</span>
             </div>
             <div className="sec-ctx"><span className="red">{f.pattern}</span> · {f.context}</div>
+            {(() => {
+              const rot = rotationFor(f.type);
+              if (!rot) return null;
+              return rot.url
+                ? <a className="sec-rotate" href={rot.url} target="_blank" rel="noreferrer">
+                    <Icon name="bolt" size={11} /> {rot.label}
+                  </a>
+                : <div className="sec-rotate static"><Icon name="bolt" size={11} /> {rot.label}</div>;
+            })()}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="sec-line">L{f.lineNumber}</span>

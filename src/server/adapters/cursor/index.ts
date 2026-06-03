@@ -1,4 +1,4 @@
-import { Adapter, Session, SessionDetail, ImageData, SearchResult } from '../types.js';
+import { Adapter, Session, SessionDetail, ImageData, SearchResult, SecretFinding } from '../types.js';
 import type { CursorParsedConversation } from './parser.js';
 import {
   parseAllSessions,
@@ -8,6 +8,7 @@ import {
   restoreImage as restoreImageInDb,
   parseConversation,
   searchMessagesInDb,
+  scanCursorSecrets,
 } from './parser.js';
 import { access, copyFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -141,5 +142,17 @@ export class CursorAdapter implements Adapter {
     const sessionsByComposer = new Map<string, Session>();
     for (const s of sessions) sessionsByComposer.set(s.id, s);
     return searchMessagesInDb(CURSOR_DB_PATH, query, limit, sessionsByComposer);
+  }
+
+  /**
+   * Read-only secret scan over a Cursor composer's bubbles.
+   * Cursor `redactSecrets` is intentionally not implemented — rewriting
+   * SQLite blobs while Cursor is running is risky and the cache invalidation
+   * story is murky. Users with Cursor leaks should rotate the credential
+   * (via the rotate link in the UI) and delete the affected session in
+   * Cursor itself.
+   */
+  async scanSecrets(sessionId: string): Promise<SecretFinding[]> {
+    return scanCursorSecrets(CURSOR_DB_PATH, sessionId);
   }
 }

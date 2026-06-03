@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { readdir, stat, unlink } from 'fs/promises';
+import { readdir, stat, unlink, readFile, copyFile } from 'fs/promises';
 import type { Session, SearchResult } from '../adapters/types.js';
 import { ADAPTERS as adapters, clearAllCaches } from '../adapters/registry.js';
 import { BACKUP_DIR } from '../adapters/constants.js';
@@ -305,18 +305,33 @@ router.post('/sessions/:id/restore', async (req: Request, res: Response) => {
 
 // Backup management
 
+interface BackupMeta { origPath?: string; action?: string; createdAt?: number }
+
+async function readMeta(backupPath: string): Promise<BackupMeta | null> {
+  try {
+    const raw = await readFile(`${backupPath}.meta.json`, 'utf-8');
+    return JSON.parse(raw) as BackupMeta;
+  } catch { return null; }
+}
+
 router.get('/backups', async (_req: Request, res: Response) => {
   try {
-    const files = await readdir(BACKUP_DIR).catch(() => []);
+    const all = await readdir(BACKUP_DIR).catch(() => []);
+    // Sidecars are an implementation detail; the UI only sees the real backups.
+    const files = all.filter(n => !n.endsWith('.meta.json'));
     const backups = await Promise.all(
       files.map(async (name) => {
         const filePath = join(BACKUP_DIR, name);
         const stats = await stat(filePath);
+        const meta = await readMeta(filePath);
         return {
           name,
           sizeBytes: stats.size,
           createdAt: stats.birthtimeMs,
           path: filePath,
+          origPath: meta?.origPath,
+          action: meta?.action,
+          canRestore: meta?.origPath != null,
         };
       })
     );
@@ -327,10 +342,35 @@ router.get('/backups', async (_req: Request, res: Response) => {
   }
 });
 
+router.post('/backups/:name/restore', async (req: Request, res: Response) => {
+  try {
+    const name = param(req, 'name');
+    const filePath = join(BACKUP_DIR, name);
+    const meta = await readMeta(filePath);
+    if (!meta?.origPath) {
+      res.status(400).json({ error: 'No restore target recorded for this backup (legacy backup pre-0.3.2). Restore manually from ~/.conclear/backups.' });
+      return;
+    }
+    // Sanity check: the original parent directory should still exist before we clobber.
+    try {
+      await stat(meta.origPath.substring(0, meta.origPath.lastIndexOf('/')));
+    } catch {
+      res.status(400).json({ error: `Original directory no longer exists: ${meta.origPath}` });
+      return;
+    }
+    await copyFile(filePath, meta.origPath);
+    res.json({ ok: true, restoredTo: meta.origPath });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.delete('/backups/:name', async (req: Request, res: Response) => {
   try {
     const filePath = join(BACKUP_DIR, param(req, 'name'));
     await unlink(filePath);
+    // Best-effort sidecar cleanup.
+    await unlink(`${filePath}.meta.json`).catch(() => {});
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -341,7 +381,7 @@ router.delete('/backups', async (_req: Request, res: Response) => {
   try {
     const files = await readdir(BACKUP_DIR).catch(() => []);
     for (const name of files) {
-      await unlink(join(BACKUP_DIR, name));
+      await unlink(join(BACKUP_DIR, name)).catch(() => {});
     }
     res.json({ ok: true, deleted: files.length });
   } catch (err) {

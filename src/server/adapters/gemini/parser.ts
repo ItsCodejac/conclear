@@ -1,6 +1,7 @@
-import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent } from '../types.js';
-import { readFile, stat } from 'fs/promises';
+import { Session, SessionDetail, SessionImage, ImageData, ChatMessage, TimelineEvent, SecretFinding } from '../types.js';
+import { readFile, writeFile, stat } from 'fs/promises';
 import { basename } from 'path';
+import { scanText, redactText, sortFindings, type RedactFilter } from '../secrets.js';
 
 /**
  * Gemini CLI session JSON format:
@@ -570,4 +571,133 @@ export async function parseConversation(filePath: string): Promise<GeminiParsedC
   }
 
   return { messages: chatMessages, timeline };
+}
+
+// ── Secret scanning + redact + export ─────────────────────────────────────
+
+interface MutableGeminiMessage {
+  type?: string;
+  timestamp?: string;
+  content?: unknown;
+}
+
+interface MutableGeminiSession {
+  messages?: MutableGeminiMessage[];
+  [k: string]: unknown;
+}
+
+function scanContentInPlace(
+  content: unknown,
+  unitNumber: number,
+  seen: Set<string>,
+  timestamp: string | undefined,
+  findings: SecretFinding[],
+): void {
+  if (content === null || content === undefined) return;
+  if (typeof content === 'string') {
+    findings.push(...scanText(content, unitNumber, seen, timestamp));
+    return;
+  }
+  if (Array.isArray(content)) {
+    content.forEach(c => scanContentInPlace(c, unitNumber, seen, timestamp, findings));
+    return;
+  }
+  if (typeof content === 'object') {
+    const rec = content as Record<string, unknown>;
+    if (typeof rec.text === 'string') {
+      findings.push(...scanText(rec.text, unitNumber, seen, timestamp));
+    }
+    if (Array.isArray(rec.parts)) {
+      rec.parts.forEach(p => scanContentInPlace(p, unitNumber, seen, timestamp, findings));
+    }
+  }
+}
+
+export async function scanGeminiSecrets(filePath: string): Promise<SecretFinding[]> {
+  const findings: SecretFinding[] = [];
+  const seen = new Set<string>();
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    const session = JSON.parse(raw) as MutableGeminiSession;
+    const messages = session.messages ?? [];
+    messages.forEach((m, i) => {
+      scanContentInPlace(m.content, i + 1, seen, m.timestamp, findings);
+    });
+  } catch { /* parse error */ }
+  return sortFindings(findings);
+}
+
+function redactInContent(
+  content: unknown,
+  filter: RedactFilter | null,
+): { content: unknown; replaced: number } {
+  if (content === null || content === undefined) return { content, replaced: 0 };
+  if (typeof content === 'string') {
+    const r = redactText(content, filter);
+    return { content: r.text, replaced: r.replaced };
+  }
+  if (Array.isArray(content)) {
+    let replaced = 0;
+    const out = content.map(c => {
+      const r = redactInContent(c, filter);
+      replaced += r.replaced;
+      return r.content;
+    });
+    return { content: out, replaced };
+  }
+  if (typeof content === 'object') {
+    const rec = { ...content as Record<string, unknown> };
+    let replaced = 0;
+    if (typeof rec.text === 'string') {
+      const r = redactText(rec.text, filter);
+      rec.text = r.text;
+      replaced += r.replaced;
+    }
+    if (Array.isArray(rec.parts)) {
+      const out: unknown[] = [];
+      for (const p of rec.parts) {
+        const r = redactInContent(p, filter);
+        out.push(r.content);
+        replaced += r.replaced;
+      }
+      rec.parts = out;
+    }
+    return { content: rec, replaced };
+  }
+  return { content, replaced: 0 };
+}
+
+export async function redactGeminiSecrets(
+  filePath: string,
+  filter: RedactFilter | null,
+): Promise<{ replaced: number }> {
+  const raw = await readFile(filePath, 'utf-8');
+  const session = JSON.parse(raw) as MutableGeminiSession;
+  const messages = session.messages ?? [];
+  let replaced = 0;
+  messages.forEach((m, i) => {
+    if (filter?.lineNumber != null && (i + 1) !== filter.lineNumber) return;
+    const r = redactInContent(m.content, filter);
+    m.content = r.content;
+    replaced += r.replaced;
+  });
+  if (replaced > 0) {
+    await writeFile(filePath, JSON.stringify(session, null, 2), 'utf-8');
+  }
+  return { replaced };
+}
+
+export async function exportGeminiMarkdown(filePath: string): Promise<string> {
+  const out: string[] = [];
+  try {
+    const raw = await readFile(filePath, 'utf-8');
+    const session = JSON.parse(raw) as MutableGeminiSession;
+    out.push(`# Gemini session ${session.sessionId ?? basename(filePath)}`, '');
+    for (const m of session.messages ?? []) {
+      const role = m.type === 'gemini' ? '## Gemini' : m.type === 'user' ? '## User' : `## ${m.type ?? 'message'}`;
+      out.push(role, '');
+      out.push(extractText(m.content), '');
+    }
+  } catch { /* fall through */ }
+  return out.join('\n');
 }

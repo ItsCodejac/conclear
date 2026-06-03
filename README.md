@@ -1,5 +1,10 @@
 # ConClear
 
+[![npm version](https://img.shields.io/npm/v/conclear.svg)](https://www.npmjs.com/package/conclear)
+[![npm downloads](https://img.shields.io/npm/dm/conclear.svg)](https://www.npmjs.com/package/conclear)
+[![CI](https://github.com/ItsCodejac/conclear/actions/workflows/ci.yml/badge.svg)](https://github.com/ItsCodejac/conclear/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/conclear.svg)](https://github.com/ItsCodejac/conclear/blob/main/LICENSE)
+
 Your AI coding sessions are full of screenshots you'll never look at again. ConClear finds them, shows them to you, and lets you fix the problem before Claude tells you it can't handle your images.
 
 ## The problem

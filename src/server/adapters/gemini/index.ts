@@ -1,4 +1,4 @@
-import { Adapter, Session, SessionDetail, ImageData } from '../types.js';
+import { Adapter, Session, SessionDetail, ImageData, SecretFinding } from '../types.js';
 import type { GeminiParsedConversation } from './parser.js';
 import {
   parseSessionFile,
@@ -7,6 +7,9 @@ import {
   stripImagesFromSession,
   restoreImageInSession,
   parseConversation,
+  scanGeminiSecrets,
+  redactGeminiSecrets,
+  exportGeminiMarkdown,
 } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -15,7 +18,7 @@ import { BACKUP_DIR } from '../constants.js';
 
 const GEMINI_DIR = join(effectiveHome(), '.gemini', 'tmp');
 
-async function createBackup(filePath: string): Promise<string> {
+async function createBackup(filePath: string, action: string = 'mutate'): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -24,11 +27,16 @@ async function createBackup(filePath: string): Promise<string> {
 
   await copyFile(filePath, backupPath);
 
-  // Verify backup integrity
   const [origStats, backupStats] = await Promise.all([fsStat(filePath), fsStat(backupPath)]);
   if (origStats.size !== backupStats.size) {
     throw new Error(`Backup verification failed: size mismatch (${origStats.size} vs ${backupStats.size})`);
   }
+
+  await writeFile(`${backupPath}.meta.json`, JSON.stringify({
+    origPath: filePath,
+    action,
+    createdAt: Date.now(),
+  }, null, 2), 'utf-8');
 
   return backupPath;
 }
@@ -207,7 +215,7 @@ export class GeminiAdapter implements Adapter {
 
   async stripImages(sessionId: string, imageIds: string[]): Promise<{ backupPath: string; bytesReclaimed: number }> {
     const filePath = await this.findSessionFile(sessionId);
-    const backupPath = await createBackup(filePath);
+    const backupPath = await createBackup(filePath, 'strip');
 
     const content = await readFile(filePath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -227,7 +235,7 @@ export class GeminiAdapter implements Adapter {
 
   async stripAllImages(sessionId: string): Promise<{ backupPath: string; bytesReclaimed: number }> {
     const filePath = await this.findSessionFile(sessionId);
-    const backupPath = await createBackup(filePath);
+    const backupPath = await createBackup(filePath, 'strip');
 
     const content = await readFile(filePath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -254,5 +262,28 @@ export class GeminiAdapter implements Adapter {
   async getConversation(sessionId: string): Promise<GeminiParsedConversation> {
     const filePath = await this.findSessionFile(sessionId);
     return parseConversation(filePath);
+  }
+
+  async scanSecrets(sessionId: string): Promise<SecretFinding[]> {
+    const filePath = await this.findSessionFile(sessionId);
+    return scanGeminiSecrets(filePath);
+  }
+
+  async redactSecrets(
+    sessionId: string,
+    filter: { lineNumber?: number; type?: string } | null,
+  ): Promise<{ backupPath: string; bytesReclaimed: number; replaced: number }> {
+    const filePath = await this.findSessionFile(sessionId);
+    const origSize = (await fsStat(filePath)).size;
+    const backupPath = await createBackup(filePath, 'redact');
+    const { replaced } = await redactGeminiSecrets(filePath, filter);
+    const newSize = (await fsStat(filePath)).size;
+    return { backupPath, bytesReclaimed: origSize - newSize, replaced };
+  }
+
+  async exportSession(sessionId: string): Promise<{ markdown: string; name: string | null }> {
+    const filePath = await this.findSessionFile(sessionId);
+    const markdown = await exportGeminiMarkdown(filePath);
+    return { markdown, name: null };
   }
 }

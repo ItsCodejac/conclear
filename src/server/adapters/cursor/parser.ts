@@ -16,7 +16,8 @@
  */
 
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import { Session, SessionDetail, SessionImage, ImageData, SearchResult } from '../types.js';
+import { Session, SessionDetail, SessionImage, ImageData, SearchResult, SecretFinding } from '../types.js';
+import { scanText, sortFindings } from '../secrets.js';
 
 // ---------------------------------------------------------------------------
 // Types for raw Cursor JSON structures
@@ -599,6 +600,45 @@ function summarizeToolArgs(rawArgs: string): string {
  * `sessionsByComposer` lets the caller attach session name / project from the
  * already-parsed session list without an extra DB round-trip per result.
  */
+/**
+ * Scan every bubble in a Cursor composer for secrets. Walks bubble.text,
+ * toolFormerData.rawArgs (the tool input JSON), and toolFormerData.result.
+ * `lineNumber` on findings is the 1-based bubble index.
+ *
+ * Read-only: we open the DB read-only and never write back. Cursor redact
+ * would need a SQLite UPDATE pipeline + cursor-side cache invalidation —
+ * not in 0.4.
+ */
+export function scanCursorSecrets(dbPath: string, composerId: string): SecretFinding[] {
+  const db = openDb(dbPath);
+  const findings: SecretFinding[] = [];
+  const seen = new Set<string>();
+  try {
+    const row = db.prepare('SELECT value FROM cursorDiskKV WHERE key = ?')
+      .get(`composerData:${composerId}`) as { value: string } | undefined;
+    if (!row?.value) return findings;
+
+    const data = JSON.parse(row.value) as ComposerData;
+    const headers = data.fullConversationHeadersOnly || [];
+
+    let idx = 0;
+    for (const h of headers) {
+      idx++;
+      const bubble = getBubble(db, data.composerId, h.bubbleId);
+      if (!bubble) continue;
+      if (bubble.text) findings.push(...scanText(bubble.text, idx, seen));
+      const tfd = bubble.toolFormerData;
+      if (tfd) {
+        if (tfd.rawArgs) findings.push(...scanText(tfd.rawArgs, idx, seen));
+        if (tfd.result) findings.push(...scanText(tfd.result, idx, seen));
+      }
+    }
+  } finally {
+    db.close();
+  }
+  return sortFindings(findings);
+}
+
 export function searchMessagesInDb(
   dbPath: string,
   query: string,

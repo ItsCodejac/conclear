@@ -74,6 +74,8 @@ router.get('/mcp', (_req: Request, res: Response) => {
       { name: 'conclear_summary',      desc: 'Session digest: files touched + key user messages.' },
       { name: 'conclear_file_content', desc: 'Fetch a specific file version from a session.' },
       { name: 'conclear_context',      desc: 'Clean conversation text — no tool-result noise.' },
+      { name: 'conclear_files',        desc: 'List every file a session touched (paths + version counts).' },
+      { name: 'conclear_scan_secrets', desc: 'Scan a session for leaked API keys, tokens, .env dumps.' },
     ],
     entry: { mcpServers: { conclear: { command: 'conclear', args: ['mcp'] } } },
   });

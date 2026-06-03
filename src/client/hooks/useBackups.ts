@@ -25,5 +25,11 @@ export function useBackups() {
     setItems([]);
   }, []);
 
-  return { items, loading, refresh, deleteOne, deleteAll };
+  const restore = useCallback(async (name: string): Promise<{ ok: boolean; error?: string; restoredTo?: string }> => {
+    const res = await fetch(`/api/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+    const data = await res.json() as { ok?: boolean; error?: string; restoredTo?: string };
+    return { ok: res.ok && data.ok !== false, error: data.error, restoredTo: data.restoredTo };
+  }, []);
+
+  return { items, loading, refresh, deleteOne, deleteAll, restore };
 }

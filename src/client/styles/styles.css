@@ -504,6 +504,33 @@ button { font-family: inherit; }
 .sec-ctx { font-family: var(--mono); font-size: 11.5px; color: var(--muted2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
 .sec-ctx .red { color: var(--danger); }
 .sec-line { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.sec-rotate {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 4px; font-size: 11px; color: var(--accent);
+  text-decoration: none;
+}
+.sec-rotate:hover { text-decoration: underline; }
+.sec-rotate.static { color: var(--muted2); }
+
+/* ── onboarding banner ─────────────────────────────────────────────────── */
+.onboard-banner {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: var(--gap);
+  border: 1px solid var(--accent);
+  background: linear-gradient(135deg, rgba(203, 242, 78, 0.08), rgba(203, 242, 78, 0.02));
+  border-radius: 14px;
+}
+.onboard-banner .ob-ico {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px;
+  background: rgba(203, 242, 78, 0.12);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.onboard-banner .ob-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+.onboard-banner .ob-sub { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
 
 /* ── backups page ──────────────────────────────────────────────────────── */
 .bk-row { display: grid; grid-template-columns: 34px 1fr auto auto auto; gap: 13px; align-items: center; padding: 13px 16px; border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 9px; background: var(--surface-1); transition: .12s; }

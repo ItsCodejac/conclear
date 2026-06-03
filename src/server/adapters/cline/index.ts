@@ -1,4 +1,4 @@
-import { Adapter, Session, SessionDetail, ImageData, FileHistory } from '../types.js';
+import { Adapter, Session, SessionDetail, ImageData, FileHistory, SecretFinding } from '../types.js';
 import type { ClineParsedConversation } from './parser.js';
 import {
   parseTaskSession,
@@ -10,6 +10,9 @@ import {
   parseConversation,
   parseFileHistory,
   getFileContent as getFileContentFromFile,
+  scanClineSecrets,
+  redactClineSecrets,
+  exportClineMarkdown,
 } from './parser.js';
 import { readdir, access, copyFile, readFile, writeFile, stat as fsStat, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -24,7 +27,7 @@ const SOURCE_DIRS: Array<{ path: string; label: string }> = [
   { path: join(VSCODE_GLOBAL_STORAGE, 'rooveterinaryinc.roo-cline', 'tasks'), label: 'Roo Code' },
 ];
 
-async function createBackup(filePath: string): Promise<string> {
+async function createBackup(filePath: string, action: string = 'mutate'): Promise<string> {
   await mkdir(BACKUP_DIR, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -33,11 +36,17 @@ async function createBackup(filePath: string): Promise<string> {
 
   await copyFile(filePath, backupPath);
 
-  // Verify backup integrity
   const [origStats, backupStats] = await Promise.all([fsStat(filePath), fsStat(backupPath)]);
   if (origStats.size !== backupStats.size) {
     throw new Error(`Backup verification failed: size mismatch (${origStats.size} vs ${backupStats.size})`);
   }
+
+  // Sidecar for the Backups page restore action.
+  await writeFile(`${backupPath}.meta.json`, JSON.stringify({
+    origPath: filePath,
+    action,
+    createdAt: Date.now(),
+  }, null, 2), 'utf-8');
 
   return backupPath;
 }
@@ -206,7 +215,7 @@ export class ClineAdapter implements Adapter {
 
   async stripImages(sessionId: string, imageIds: string[]): Promise<{ backupPath: string; bytesReclaimed: number }> {
     const { apiPath } = await this.findSession(sessionId);
-    const backupPath = await createBackup(apiPath);
+    const backupPath = await createBackup(apiPath, 'strip');
 
     const content = await readFile(apiPath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -226,7 +235,7 @@ export class ClineAdapter implements Adapter {
 
   async stripAllImages(sessionId: string): Promise<{ backupPath: string; bytesReclaimed: number }> {
     const { apiPath } = await this.findSession(sessionId);
-    const backupPath = await createBackup(apiPath);
+    const backupPath = await createBackup(apiPath, 'strip');
 
     const content = await readFile(apiPath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -249,7 +258,7 @@ export class ClineAdapter implements Adapter {
     targetBytes: number,
   ): Promise<{ backupPath: string; bytesReclaimed: number }> {
     const { apiPath } = await this.findSession(sessionId);
-    const backupPath = await createBackup(apiPath);
+    const backupPath = await createBackup(apiPath, 'resize');
 
     const content = await readFile(apiPath, 'utf-8');
     const originalSize = Buffer.byteLength(content, 'utf-8');
@@ -283,5 +292,30 @@ export class ClineAdapter implements Adapter {
   async getFileContent(sessionId: string, lineNumber: number): Promise<string | null> {
     const { apiPath } = await this.findSession(sessionId);
     return getFileContentFromFile(apiPath, lineNumber);
+  }
+
+  async scanSecrets(sessionId: string): Promise<SecretFinding[]> {
+    const { apiPath } = await this.findSession(sessionId);
+    return scanClineSecrets(apiPath);
+  }
+
+  async redactSecrets(
+    sessionId: string,
+    filter: { lineNumber?: number; type?: string } | null,
+  ): Promise<{ backupPath: string; bytesReclaimed: number; replaced: number }> {
+    const { apiPath } = await this.findSession(sessionId);
+    const origSize = (await fsStat(apiPath)).size;
+    const backupPath = await createBackup(apiPath, 'redact');
+    const { replaced } = await redactClineSecrets(apiPath, filter);
+    const newSize = (await fsStat(apiPath)).size;
+    return { backupPath, bytesReclaimed: origSize - newSize, replaced };
+  }
+
+  async exportSession(sessionId: string): Promise<{ markdown: string; name: string | null }> {
+    const { apiPath, taskDir, sourceLabel } = await this.findSession(sessionId);
+    const detail = await parseTaskDetail(taskDir, sessionId, sourceLabel);
+    const name = detail?.name ?? null;
+    const markdown = await exportClineMarkdown(apiPath, sessionId, name);
+    return { markdown, name };
   }
 }

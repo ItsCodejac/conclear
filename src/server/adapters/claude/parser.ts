@@ -1468,53 +1468,7 @@ function formatExportTime(ts: string): string {
 
 // ── Secret scanning ─────────────────────────────────────────────────────────
 
-/** Redact a secret value: show first 4 and last 4 chars with **** in between. */
-function redactSecret(value: string): string {
-  if (value.length <= 8) return '****';
-  return value.slice(0, 4) + '****' + value.slice(-4);
-}
-
-/** Extract a redacted context window around a match position in text. */
-function extractContext(text: string, matchStart: number, matchEnd: number, secret: string): string {
-  const windowSize = 40;
-  const start = Math.max(0, matchStart - windowSize);
-  const end = Math.min(text.length, matchEnd + windowSize);
-  let ctx = text.slice(start, end).replace(/\n/g, ' ').trim();
-  // Replace the actual secret within the context with the redacted version
-  ctx = ctx.replace(secret, redactSecret(secret));
-  if (start > 0) ctx = '...' + ctx;
-  if (end < text.length) ctx = ctx + '...';
-  // Truncate overall if still too long
-  if (ctx.length > 120) ctx = ctx.slice(0, 117) + '...';
-  return ctx;
-}
-
-interface SecretPattern {
-  type: string;
-  severity: 'high' | 'medium' | 'low';
-  regex: RegExp;
-  /** For patterns that need a nearby keyword context (e.g. AWS secret keys) */
-  nearbyKeyword?: RegExp;
-}
-
-const SECRET_PATTERNS: SecretPattern[] = [
-  // --- High severity ---
-  { type: 'api_key', severity: 'high', regex: /sk-(?:proj-|ant-)?[a-zA-Z0-9]{20,}/g },
-  { type: 'aws_key', severity: 'high', regex: /AKIA[A-Z0-9]{16}/g },
-  { type: 'aws_secret', severity: 'high', regex: /[A-Za-z0-9/+=]{40}/g, nearbyKeyword: /aws_secret|AWS_SECRET/i },
-  { type: 'private_key', severity: 'high', regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
-  { type: 'github_token', severity: 'high', regex: /(?:ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36,}|ghs_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,})/g },
-  { type: 'bearer_token', severity: 'high', regex: /Bearer [a-zA-Z0-9._-]{20,}/g },
-
-  // --- Medium severity ---
-  { type: 'env_credential', severity: 'medium', regex: /(?:PASSWORD|SECRET|TOKEN|API_KEY)\s*=\s*\S+/gi },
-  { type: 'database_url', severity: 'medium', regex: /(?:postgres|mysql|mongodb):\/\/[^\s"']+:[^\s"']+@[^\s"']+/g },
-  { type: 'webhook_token', severity: 'medium', regex: /https:\/\/[^\s"']*(?:hooks|webhook)[^\s"']*\/[a-zA-Z0-9_-]{20,}/gi },
-
-  // --- Low severity ---
-  { type: 'env_file', severity: 'low', regex: /(?:read|write|load|cat|source)\s+[^\s]*\.env\b/gi },
-  { type: 'sensitive_path', severity: 'low', regex: /(?:\/|\\)(?:credentials|secrets|keys)(?:\/|\\)/gi },
-];
+import { scanText, redactText, sortFindings, type RedactFilter as SharedRedactFilter } from '../secrets.js';
 
 /** Extract all text content from a parsed JSONL line for scanning. */
 function extractScanText(parsed: Record<string, unknown>): string {
@@ -1564,7 +1518,7 @@ function extractScanText(parsed: Record<string, unknown>): string {
  */
 export async function scanForSecrets(filePath: string): Promise<SecretFinding[]> {
   const findings: SecretFinding[] = [];
-  const seen = new Set<string>(); // deduplicate by type+redacted pattern
+  const seen = new Set<string>();
 
   const rl = createInterface({
     input: createReadStream(filePath, { encoding: 'utf-8' }),
@@ -1574,57 +1528,17 @@ export async function scanForSecrets(filePath: string): Promise<SecretFinding[]>
   let lineIdx = 0;
   for await (const line of rl) {
     if (!line.trim()) { lineIdx++; continue; }
-
     try {
       const parsed = JSON.parse(line) as Record<string, unknown>;
-      const timestamp = parsed.timestamp as string | undefined;
       const text = extractScanText(parsed);
-      if (!text) { lineIdx++; continue; }
-
-      for (const pattern of SECRET_PATTERNS) {
-        // Reset the regex lastIndex for each line
-        pattern.regex.lastIndex = 0;
-
-        let match: RegExpExecArray | null;
-        while ((match = pattern.regex.exec(text)) !== null) {
-          const matchedStr = match[0];
-
-          // For aws_secret, require the nearby keyword within 200 chars
-          if (pattern.nearbyKeyword) {
-            const windowStart = Math.max(0, match.index - 200);
-            const windowEnd = Math.min(text.length, match.index + matchedStr.length + 200);
-            const window = text.slice(windowStart, windowEnd);
-            if (!pattern.nearbyKeyword.test(window)) continue;
-          }
-
-          const redacted = redactSecret(matchedStr);
-          const dedupeKey = `${pattern.type}:${redacted}`;
-          if (seen.has(dedupeKey)) continue;
-          seen.add(dedupeKey);
-
-          const context = extractContext(text, match.index, match.index + matchedStr.length, matchedStr);
-
-          findings.push({
-            type: pattern.type,
-            pattern: redacted,
-            context,
-            lineNumber: lineIdx + 1,
-            timestamp,
-            severity: pattern.severity,
-          });
-        }
+      if (text) {
+        findings.push(...scanText(text, lineIdx + 1, seen, parsed.timestamp as string | undefined));
       }
-    } catch {
-      // skip unparseable lines
-    }
+    } catch { /* skip unparseable lines */ }
     lineIdx++;
   }
 
-  // Sort by severity: high first, then medium, then low
-  const severityOrder = { high: 0, medium: 1, low: 2 };
-  findings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-
-  return findings;
+  return sortFindings(findings);
 }
 
 /**
@@ -1635,7 +1549,7 @@ export async function scanForSecrets(filePath: string): Promise<SecretFinding[]>
  * Optional filter limits redaction to a specific line / pattern (used by the
  * per-finding redact button). When the filter is null, every match is redacted.
  */
-export interface RedactFilter { lineNumber?: number; type?: string }
+export type RedactFilter = SharedRedactFilter;
 
 export async function redactSecretsInFile(
   filePath: string,
@@ -1649,20 +1563,9 @@ export async function redactSecretsInFile(
     if (!lines[i].trim()) continue;
     if (filter?.lineNumber != null && (i + 1) !== filter.lineNumber) continue;
 
-    let line = lines[i];
-    for (const pattern of SECRET_PATTERNS) {
-      if (filter?.type && filter.type !== pattern.type) continue;
-      pattern.regex.lastIndex = 0;
-      line = line.replace(pattern.regex, (match) => {
-        if (pattern.nearbyKeyword) {
-          // Skip nearby-keyword patterns when filter is broad — too aggressive otherwise.
-          if (!pattern.nearbyKeyword.test(lines[i])) return match;
-        }
-        replaced++;
-        return '****REDACTED****';
-      });
-    }
-    lines[i] = line;
+    const { text, replaced: n } = redactText(lines[i], filter);
+    replaced += n;
+    lines[i] = text;
   }
 
   return { content: lines.join('\n'), replaced };
