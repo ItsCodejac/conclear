@@ -1,593 +1,203 @@
-import { useState, useCallback, useRef } from 'react';
-import { PaneLayout } from './components/PaneLayout';
-import { SessionTable } from './components/SessionTable';
-import { Toolbar } from './components/Toolbar';
-import { ImagePreview } from './components/ImagePreview';
-import { ConversationView } from './components/ConversationView';
-import { TimelineView } from './components/TimelineView';
-import { FilesView } from './components/FilesView';
-import { BackupManager } from './components/BackupManager';
-import { ScanResults } from './components/ScanResults';
-import { HelpPanel } from './components/HelpPanel';
-import { GlobalSearch } from './components/GlobalSearch';
-import { DiskUsage } from './components/DiskUsage';
-import { ConfirmDialog, type ConfirmDialogProps } from './components/ConfirmDialog';
-import { ToastContainer, useToast } from './components/Toast';
+import { useEffect, useMemo, useState } from 'react';
+import { Logo } from './lib/Logo';
+import { Icon } from './lib/icons';
+import { clsx, fmtBytes } from './lib/format';
+import { TOOLS, type ToolId } from './lib/types';
 import { useSessions } from './hooks/useSessions';
-import { useKeyboard } from './hooks/useKeyboard';
-import type { SessionDetail } from './types';
-import styles from './App.module.css';
+import { useDerived } from './hooks/useDerived';
+import { useToasts } from './hooks/useToasts';
+import { Overview } from './pages/Overview';
+import { Sessions } from './pages/Sessions';
+import { Security } from './pages/Security';
+import { Connect } from './pages/Connect';
+import { Backups } from './pages/Backups';
+import { Settings } from './pages/Settings';
+import { Admin } from './pages/Admin';
+import { Upgrade } from './pages/Upgrade';
+import { CommandPalette } from './commands/CommandPalette';
+import { ScanOverlay } from './extras/ScanOverlay';
+import { WORKSPACES, ADMIN_STATS, type Workspace } from './data/admin-mock';
+import { CLIENTS } from './data/install-mock';
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+type PageId = 'overview' | 'sessions' | 'security' | 'connect' | 'backups' | 'settings' | 'admin';
 
-// In-memory cache of image data for recovery
-interface CachedImage {
-  base64: string;
-  mediaType: string;
-}
-
-type PendingConfirm = Omit<ConfirmDialogProps, 'onConfirm' | 'onCancel'> & {
-  action: () => void;
-};
+interface NavSpec { id: PageId; label: string; icon: Parameters<typeof Icon>[0]['name'] }
+const NAV: NavSpec[] = [
+  { id: 'overview', label: 'Reclaim',   icon: 'reclaim' },
+  { id: 'sessions', label: 'Sessions',  icon: 'sessions' },
+  { id: 'security', label: 'Security',  icon: 'shield' },
+  { id: 'connect',  label: 'Connect',   icon: 'cpu' },
+  { id: 'backups',  label: 'Backups',   icon: 'archive' },
+  { id: 'admin',    label: 'Admin',     icon: 'org' },
+];
 
 export function App() {
-  const { sessions, loading, error, refresh } = useSessions();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [strippedIds, setStrippedIds] = useState<Set<string>>(new Set());
-  const [showBackups, setShowBackups] = useState(false);
-  const [showScan, setShowScan] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [detailTab, setDetailTab] = useState<'images' | 'timeline' | 'chat' | 'files'>('images');
-  const [operating, setOperating] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
-  const [toasts, toast] = useToast();
-  const imageCache = useRef<Map<string, CachedImage>>(new Map());
+  const { sessions, loading, refresh } = useSessions();
+  const derived = useDerived(sessions);
+  const { toasts, toast } = useToasts();
 
-  const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
+  const [page, setPage] = useState<PageId | 'settings'>('overview');
+  const [projFilter, setProjFilter] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [workspace, setWorkspace] = useState<Workspace>(WORKSPACES[0]);
 
-  const selectSession = useCallback(async (id: string) => {
-    const isSame = id === selectedIdRef.current;
-    setSelectedId(id);
-    setDetailLoading(true);
-    if (!isSame) {
-      setStrippedIds(new Set());
-      imageCache.current.clear();
-    }
-    try {
-      const res = await fetch(`/api/sessions/${id}`);
-      const data = await res.json();
-      setDetail(data);
-    } catch {
-      setDetail(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
+  const plan = workspace.plan;
 
-  const cacheImage = useCallback(async (sessionId: string, imageId: string): Promise<CachedImage | null> => {
-    const cached = imageCache.current.get(imageId);
-    if (cached) return cached;
-
-    try {
-      const res = await fetch(`/api/sessions/${sessionId}/images/${encodeURIComponent(imageId)}`);
-      if (!res.ok) return null;
-      const blob = await res.blob();
-      const mediaType = blob.type || 'image/png';
-      const buffer = await blob.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-      const entry = { base64, mediaType };
-      imageCache.current.set(imageId, entry);
-      return entry;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const handleStrip = useCallback(async (imageIds?: string[]) => {
-    if (!selectedId || !detail) return;
-    if (operating) return;
-    const ids = imageIds ?? detail.images.map(img => img.id);
-
-    setOperating(`Stripping ${ids.length} image${ids.length > 1 ? 's' : ''}...`);
-
-    try {
-      // Cache all images before stripping
-      await Promise.all(ids.map(id => cacheImage(selectedId, id)));
-
-      const body = imageIds ? { imageIds } : {};
-      const res = await fetch(`/api/sessions/${selectedId}/strip`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const result = await res.json();
-
-      // Mark as stripped locally
-      setStrippedIds(prev => {
-        const next = new Set(prev);
-        for (const id of ids) next.add(id);
-        return next;
-      });
-
-      // Update stats locally
-      const strippedBytes = detail.images
-        .filter(img => ids.includes(img.id))
-        .reduce((sum, img) => sum + img.sizeBytes, 0);
-
-      setDetail(prev => prev ? {
-        ...prev,
-        totalSizeBytes: prev.totalSizeBytes - (result.bytesReclaimed ?? strippedBytes),
-        imageSizeBytes: prev.imageSizeBytes - strippedBytes,
-      } : null);
-
-      toast.success(`Stripped ${ids.length} image${ids.length > 1 ? 's' : ''} -- ${formatBytes(result.bytesReclaimed ?? strippedBytes)} freed`);
-    } catch (err) {
-      toast.error(`Strip failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-    } finally {
-      setOperating(null);
-    }
-  }, [selectedId, detail, cacheImage, operating, toast]);
-
-  const handleStripWithConfirm = useCallback((imageIds?: string[]) => {
-    if (!detail) return;
-    const ids = imageIds ?? detail.images.map(img => img.id);
-    const isBulk = !imageIds; // "Strip All" -- no specific IDs passed
-
-    if (isBulk && ids.length > 1) {
-      const totalBytes = detail.images
-        .filter(img => ids.includes(img.id))
-        .reduce((sum, img) => sum + img.sizeBytes, 0);
-      setConfirm({
-        title: 'Strip all images',
-        message: `This will strip ${ids.length} images (${formatBytes(totalBytes)}) from the session file. Originals will be cached in memory for recovery during this session.`,
-        confirmLabel: `Strip ${ids.length} images`,
-        action: () => handleStrip(),
-      });
-    } else {
-      handleStrip(imageIds);
-    }
-  }, [detail, handleStrip]);
-
-  const handleRecover = useCallback(async (imageId: string) => {
-    if (!selectedId) return;
-    if (operating) return;
-    const cached = imageCache.current.get(imageId);
-    if (!cached) {
-      toast.error('Image data not in cache -- cannot recover');
-      return;
-    }
-
-    setOperating('Recovering image...');
-
-    try {
-      await fetch(`/api/sessions/${selectedId}/restore`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageId,
-          base64: cached.base64,
-          mediaType: cached.mediaType,
-        }),
-      });
-
-      setStrippedIds(prev => {
-        const next = new Set(prev);
-        next.delete(imageId);
-        return next;
-      });
-
-      const img = detail?.images.find(i => i.id === imageId);
-      if (img) {
-        setDetail(prev => prev ? {
-          ...prev,
-          totalSizeBytes: prev.totalSizeBytes + img.sizeBytes,
-          imageSizeBytes: prev.imageSizeBytes + img.sizeBytes,
-        } : null);
+  // Global keyboard shortcuts
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(v => !v);
       }
-
-      imageCache.current.delete(imageId);
-      toast.success('Image recovered');
-    } catch (err) {
-      toast.error(`Recovery failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-    } finally {
-      setOperating(null);
-    }
-  }, [selectedId, detail, operating, toast]);
-
-  const handleResize = useCallback(async (targetBytes: number, imageIds?: string[]) => {
-    if (!selectedId || !detail) return;
-    if (operating) return;
-
-    const ids = imageIds ?? detail.images.map(img => img.id);
-    const isBulk = !imageIds;
-
-    const doResize = async () => {
-      setOperating(`Resizing ${ids.length} image${ids.length > 1 ? 's' : ''}...`);
-      try {
-        const body: Record<string, unknown> = { targetBytes };
-        if (imageIds) body.imageIds = imageIds;
-
-        await fetch(`/api/sessions/${selectedId}/resize`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-
-        // Re-fetch detail to get updated sizes
-        selectSession(selectedId);
-        toast.success(`Resized ${ids.length} image${ids.length > 1 ? 's' : ''} to ${formatBytes(targetBytes)} target`);
-      } catch (err) {
-        toast.error(`Resize failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-      } finally {
-        setOperating(null);
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        setScanning(true);
       }
-    };
-
-    if (isBulk && ids.length > 1) {
-      setConfirm({
-        title: 'Resize all images',
-        message: `This will resize ${ids.length} images to a ${formatBytes(targetBytes)} target. This modifies the session file directly.`,
-        confirmLabel: `Resize ${ids.length} images`,
-        action: doResize,
-      });
-    } else {
-      doResize();
+      if (e.key === 'Escape') setPaletteOpen(false);
     }
-  }, [selectedId, detail, selectSession, operating, toast]);
-
-  const handleDeleteAllBackups = useCallback(() => {
-    setConfirm({
-      title: 'Delete all backups',
-      message: 'This will permanently delete all backup files. This cannot be undone.',
-      confirmLabel: 'Delete all backups',
-      action: async () => {
-        try {
-          await fetch('/api/backups', { method: 'DELETE' });
-          toast.success('All backups deleted');
-        } catch (err) {
-          toast.error(`Delete failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-        }
-      },
-    });
-  }, [toast]);
-
-  const clearStripped = useCallback(() => {
-    if (!detail) return;
-    setDetail(prev => prev ? {
-      ...prev,
-      images: prev.images.filter(img => !strippedIds.has(img.id)),
-      imageCount: prev.images.filter(img => !strippedIds.has(img.id)).length,
-    } : null);
-    setStrippedIds(new Set());
-    imageCache.current.clear();
-  }, [detail, strippedIds]);
-
-  // Context menu handlers for session rows -- select session, load detail, then act
-  const handleSessionStripAll = useCallback(async (sessionId: string) => {
-    // Select and load the session first
-    setSelectedId(sessionId);
-    setDetailLoading(true);
-    setStrippedIds(new Set());
-    imageCache.current.clear();
-    try {
-      const res = await fetch(`/api/sessions/${sessionId}`);
-      const data: SessionDetail = await res.json();
-      setDetail(data);
-      setDetailLoading(false);
-
-      // Now strip all images
-      if (data.images.length === 0) return;
-      const ids = data.images.map(img => img.id);
-      const totalBytes = data.images.reduce((sum, img) => sum + img.sizeBytes, 0);
-      setConfirm({
-        title: 'Strip all images',
-        message: `This will strip ${ids.length} images (${formatBytes(totalBytes)}) from the session file. Originals will be cached in memory for recovery during this session.`,
-        confirmLabel: `Strip ${ids.length} images`,
-        action: () => handleStrip(),
-      });
-    } catch {
-      setDetail(null);
-      setDetailLoading(false);
-    }
-  }, [handleStrip]);
-
-  const handleSessionResizeAll = useCallback(async (sessionId: string, targetBytes: number) => {
-    setSelectedId(sessionId);
-    setDetailLoading(true);
-    setStrippedIds(new Set());
-    imageCache.current.clear();
-    try {
-      const res = await fetch(`/api/sessions/${sessionId}`);
-      const data: SessionDetail = await res.json();
-      setDetail(data);
-      setDetailLoading(false);
-
-      if (data.images.length === 0) return;
-      const ids = data.images.map(img => img.id);
-      setConfirm({
-        title: 'Resize all images',
-        message: `This will resize ${ids.length} images to a ${formatBytes(targetBytes)} target. This modifies the session file directly.`,
-        confirmLabel: `Resize ${ids.length} images`,
-        action: async () => {
-          setOperating(`Resizing ${ids.length} images...`);
-          try {
-            await fetch(`/api/sessions/${sessionId}/resize`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targetBytes }),
-            });
-            selectSession(sessionId);
-            toast.success(`Resized ${ids.length} images to ${formatBytes(targetBytes)} target`);
-          } catch (err) {
-            toast.error(`Resize failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-          } finally {
-            setOperating(null);
-          }
-        },
-      });
-    } catch {
-      setDetail(null);
-      setDetailLoading(false);
-    }
-  }, [selectSession, toast]);
-
-  const handleExport = useCallback(async () => {
-    if (!selectedId) return;
-    try {
-      const res = await fetch(`/api/sessions/${selectedId}/export`);
-      if (!res.ok) throw new Error('Export failed');
-      const blob = await res.blob();
-      // Extract filename from Content-Disposition header
-      const disposition = res.headers.get('Content-Disposition');
-      let filename = 'session.md';
-      if (disposition) {
-        const match = disposition.match(/filename="([^"]+)"/);
-        if (match) filename = match[1];
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Session exported');
-    } catch (err) {
-      toast.error(`Export failed: ${err instanceof Error ? err.message : 'unknown error'}`);
-    }
-  }, [selectedId, toast]);
-
-  const handleSearchSelect = useCallback((sessionId: string, tab?: 'chat') => {
-    selectSession(sessionId);
-    setExpanded(true);
-    if (tab) setDetailTab(tab);
-  }, [selectSession]);
-
-  const expandSession = useCallback((id: string) => {
-    // The single-click handler (onClick) already fires and starts loading.
-    // We just need to flag expanded=true. The render condition is `expanded && detail`,
-    // so it'll show the full panel as soon as detail arrives.
-    setExpanded(true);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const collapseSession = useCallback(() => {
-    setExpanded(false);
-  }, []);
+  function gotoSessions(project?: string) {
+    setProjFilter(project ?? null);
+    setPage('sessions');
+  }
+  function openSession(id: string) {
+    setOpenId(id);
+    setProjFilter(null);
+    setPage('sessions');
+  }
+  function rescan() {
+    setScanning(true);
+    void refresh();
+  }
 
-  useKeyboard({
-    onRefresh: refresh,
-    onEscape: showSearch ? () => setShowSearch(false) : expanded ? collapseSession : undefined,
-    onSearch: () => setShowSearch(true),
-  });
-
-  const totalSize = sessions.reduce((s, x) => s + x.totalSizeBytes, 0);
-  const totalImages = sessions.reduce((s, x) => s + x.imageCount, 0);
+  const detectedTools = useMemo(() => [...new Set(sessions.map(s => s.tool))] as ToolId[], [sessions]);
+  const installedClients = CLIENTS.filter(c => c.mcpInstalled).length;
+  const navCounts: Partial<Record<PageId, number>> = {
+    sessions: sessions.length,
+    security: derived.totalSecrets,
+    connect:  installedClients,
+    backups:  0, // populated lazily on Backups page open
+    admin:    plan !== 'free' ? ADMIN_STATS.openLeaks : undefined,
+  };
 
   return (
-    <div className={styles.app}>
-      <header className={styles.header}>
-        <span className={styles.title}>ConClear</span>
-        <button className={styles.searchBtn} onClick={() => setShowSearch(true)} title="Global search (Cmd+K)">
-          Search All  <kbd className={styles.kbd}>⌘K</kbd>
-        </button>
-        <span className={styles.stats}>
-          {sessions.length} sessions / {formatBytes(totalSize)} / {totalImages} images
-        </span>
-        <button className={styles.helpBtn} onClick={() => setShowHelp(true)} title="Help">?</button>
-      </header>
-      <Toolbar
-        onRefresh={refresh}
-        onStripAll={detail && detail.imageCount > 0 ? () => handleStripWithConfirm() : undefined}
-        onResizeAll={detail && detail.imageCount > 0 ? (targetBytes: number) => handleResize(targetBytes) : undefined}
-        onClearStripped={strippedIds.size > 0 ? clearStripped : undefined}
-        onShowBackups={() => setShowBackups(true)}
-        onExport={selectedId ? handleExport : undefined}
-        onScan={selectedId ? () => setShowScan(true) : undefined}
-        strippedCount={strippedIds.size}
-        sessionName={detail?.name ?? detail?.preview ?? detail?.id ?? null}
-        operating={operating}
-      />
-      <BackupManager
-        visible={showBackups}
-        onClose={() => setShowBackups(false)}
-        onDeleteAll={handleDeleteAllBackups}
-      />
-      <ScanResults
-        visible={showScan}
-        sessionId={selectedId}
-        onClose={() => setShowScan(false)}
-      />
-      <HelpPanel
-        visible={showHelp}
-        onClose={() => setShowHelp(false)}
-      />
-      {expanded && detail ? (
-        <div className={styles.fullPanel}>
-          <div className={styles.fullPanelHeader}>
-            <button className={styles.backBtn} onClick={collapseSession}>← Back</button>
-            <span className={styles.fullPanelTitle}>
-              {detail.name ?? detail.preview ?? detail.id}
-            </span>
-            {detail.name && (
-              <button
-                className={styles.clipboardBtn}
-                title="Copy resume command"
-                onClick={() => {
-                  navigator.clipboard.writeText(`claude --resume "${detail.name}"`);
-                  toast.success('Resume command copied');
-                }}
-              >
-                &#x2398;
-              </button>
-            )}
-            <span className={styles.fullPanelMeta}>
-              {detail.messageCount} messages / {detail.imageCount} images / {formatBytes(detail.totalSizeBytes)}
-            </span>
-          </div>
-          <div className={styles.detailPane}>
-            <div className={styles.tabs}>
-              <button
-                className={detailTab === 'images' ? styles.tabActive : styles.tab}
-                onClick={() => setDetailTab('images')}
-              >
-                Images ({detail.imageCount})
-              </button>
-              <button
-                className={detailTab === 'timeline' ? styles.tabActive : styles.tab}
-                onClick={() => setDetailTab('timeline')}
-              >
-                Timeline
-              </button>
-              <button
-                className={detailTab === 'chat' ? styles.tabActive : styles.tab}
-                onClick={() => setDetailTab('chat')}
-              >
-                Chat ({detail.messageCount})
-              </button>
-              <button
-                className={detailTab === 'files' ? styles.tabActive : styles.tab}
-                onClick={() => setDetailTab('files')}
-              >
-                Files
-              </button>
-            </div>
-            {detailTab === 'images' && (
-              <ImagePreview
-                detail={detail}
-                loading={detailLoading}
-                onStrip={handleStripWithConfirm}
-                onRecover={handleRecover}
-                onResize={(targetBytes, imageIds) => handleResize(targetBytes, imageIds)}
-                strippedIds={strippedIds}
-                disabled={!!operating}
-              />
-            )}
-            {detailTab === 'timeline' && (
-              <TimelineView sessionId={detail.id} />
-            )}
-            {detailTab === 'chat' && (
-              <ConversationView sessionId={detail.id} />
-            )}
-            {detailTab === 'files' && (
-              <FilesView sessionId={detail.id} />
-            )}
+    <div className="win">
+      {/* titlebar */}
+      <div className="titlebar">
+        <div className="tb-left">
+          <div className="traffic"><i className="r" /><i className="y" /><i className="g" /></div>
+          <div className="tb-brand"><Logo size={22} /><span className="tb-name">Con<b>Clear</b></span></div>
+          {plan !== 'free' && <span className={clsx('tb-plan', `plan-${plan}`)}>{workspace.name}</span>}
+        </div>
+        <div className="tb-center">
+          <div className="cmdk" onClick={() => setPaletteOpen(true)}>
+            <Icon name="search" size={15} />
+            <span className="grow">Search all sessions, messages, files…</span>
+            <span className="kbd">⌘K</span>
           </div>
         </div>
-      ) : (
-        <PaneLayout
-          left={
-            <SessionTable
-              sessions={sessions}
-              loading={loading}
-              error={error}
-              selectedId={selectedId}
-              onSelect={selectSession}
-              onExpand={expandSession}
-              onStripAll={handleSessionStripAll}
-              onResizeAll={handleSessionResizeAll}
-            />
-          }
-          right={
-            detail ? (
-              <div className={styles.detailPane}>
-                <div className={styles.tabs}>
-                  <button
-                    className={detailTab === 'images' ? styles.tabActive : styles.tab}
-                    onClick={() => setDetailTab('images')}
-                  >
-                    Images ({detail.imageCount})
-                  </button>
-                  <button
-                    className={detailTab === 'timeline' ? styles.tabActive : styles.tab}
-                    onClick={() => setDetailTab('timeline')}
-                  >
-                    Timeline
-                  </button>
-                  <button
-                    className={detailTab === 'chat' ? styles.tabActive : styles.tab}
-                    onClick={() => setDetailTab('chat')}
-                  >
-                    Chat ({detail.messageCount})
-                  </button>
-                  <button
-                    className={detailTab === 'files' ? styles.tabActive : styles.tab}
-                    onClick={() => setDetailTab('files')}
-                  >
-                    Files
-                  </button>
-                </div>
-                {detailTab === 'images' && (
-                  <ImagePreview
-                    detail={detail}
-                    loading={detailLoading}
-                    onStrip={handleStripWithConfirm}
-                    onRecover={handleRecover}
-                    onResize={(targetBytes, imageIds) => handleResize(targetBytes, imageIds)}
-                    strippedIds={strippedIds}
-                    disabled={!!operating}
-                  />
-                )}
-                {detailTab === 'timeline' && (
-                  <TimelineView sessionId={detail.id} />
-                )}
-                {detailTab === 'chat' && (
-                  <ConversationView sessionId={detail.id} />
-                )}
-                {detailTab === 'files' && (
-                  <FilesView sessionId={detail.id} />
-                )}
+        <div className="tb-right">
+          <div className="mcp-chip" title="ConClear MCP server is running" onClick={() => setPage('connect')}>
+            <span className="live-dot live" /> MCP
+          </div>
+          <span className="pg-meta">{fmtBytes(derived.totalSize)}</span>
+          <button className="iconbtn" title="Rescan (⌘R)" onClick={rescan}><Icon name="refresh" size={16} /></button>
+        </div>
+      </div>
+
+      {/* body */}
+      <div className="body">
+        <nav className="rail">
+          {/* workspace switcher would go here when wired */}
+          {NAV.map(n => {
+            const locked = n.id === 'admin' && plan === 'free';
+            const count = navCounts[n.id];
+            return (
+              <div
+                key={n.id}
+                className={clsx('navitem', page === n.id && 'active', locked && 'locked')}
+                onClick={() => {
+                  setPage(n.id);
+                  if (n.id !== 'sessions') setProjFilter(null);
+                }}
+              >
+                <span className="ni-icon"><Icon name={n.icon} size={18} /></span>
+                <span>{n.label}</span>
+                {locked
+                  ? <span className="ni-lock"><Icon name="lock" size={14} /></span>
+                  : count != null && (
+                    <span className={clsx('ni-count', (n.id === 'security' || n.id === 'admin') && count > 0 && 'alert')}>{count}</span>
+                  )}
               </div>
-            ) : (
-              <DiskUsage sessions={sessions} onSelect={selectSession} />
-            )
-          }
+            );
+          })}
+          <div className="rail-spacer" />
+          <div
+            className={clsx('navitem', page === 'settings' && 'active')}
+            onClick={() => { setPage('settings'); setProjFilter(null); }}
+            style={{ marginBottom: 4 }}
+          >
+            <span className="ni-icon"><Icon name="gear" size={18} /></span>
+            <span>Settings</span>
+          </div>
+          <div className="rail-foot">
+            <div className="tools-detected">
+              <div className="td-title">Detected tools</div>
+              {detectedTools.map(t => (
+                <div className="td-row" key={t}>
+                  <span
+                    className="dot"
+                    style={{ backgroundColor: ({ claude: '#d98a4f', cursor: '#e6e6e6', gemini: '#6aa6ff', cline: '#59d499', copilot: '#c79bff' })[t] }}
+                  />
+                  {TOOLS[t].label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </nav>
+
+        <main className="main">
+          {loading && sessions.length === 0 ? (
+            <div className="page"><div className="empty-state"><div className="es-ico"><Logo size={32} /></div><div className="es-title">Loading sessions…</div></div></div>
+          ) : (
+            <>
+              {page === 'overview' && <Overview sessions={sessions} onOpen={openSession} onGoto={gotoSessions} onRescan={rescan} onClean={() => toast('success', `Queued ${derived.problem.length} sessions — resizing oversized images`)} />}
+              {page === 'sessions' && <Sessions sessions={sessions} projectFilter={projFilter} openId={openId} onOpenId={setOpenId} toast={toast} />}
+              {page === 'security' && <Security sessions={sessions} onOpen={openSession} />}
+              {page === 'connect'  && <Connect toast={toast} />}
+              {page === 'backups'  && <Backups toast={toast} />}
+              {page === 'settings' && <Settings toast={toast} />}
+              {page === 'admin'    && (plan === 'free'
+                ? <Upgrade onSwitch={setWorkspace} />
+                : <Admin workspace={workspace} toast={toast} />)}
+            </>
+          )}
+        </main>
+      </div>
+
+      {paletteOpen && (
+        <CommandPalette
+          sessions={sessions}
+          onClose={() => setPaletteOpen(false)}
+          onOpen={(id) => { openSession(id); setPaletteOpen(false); }}
         />
       )}
-      <GlobalSearch
-        visible={showSearch}
-        onClose={() => setShowSearch(false)}
-        onSelect={handleSearchSelect}
-      />
-      {confirm && (
-        <ConfirmDialog
-          title={confirm.title}
-          message={confirm.message}
-          confirmLabel={confirm.confirmLabel}
-          onConfirm={() => { setConfirm(null); confirm.action(); }}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
-      <ToastContainer toasts={toasts} />
+      {scanning && <ScanOverlay onDone={() => { setScanning(false); toast('success', `Rescan complete · ${sessions.length} sessions`); }} />}
+
+      <div className="toasts">
+        {toasts.map(t => (
+          <div key={t.id} className={clsx('toast', t.type)}>
+            <span className="t-ico"><Icon name={t.type === 'success' ? 'check' : 'error'} size={16} /></span>
+            {t.msg}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
