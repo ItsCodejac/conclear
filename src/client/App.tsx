@@ -12,23 +12,28 @@ import { Security } from './pages/Security';
 import { Connect } from './pages/Connect';
 import { Backups } from './pages/Backups';
 import { Settings } from './pages/Settings';
-import { Admin } from './pages/Admin';
 import { Upgrade } from './pages/Upgrade';
 import { CommandPalette } from './commands/CommandPalette';
 import { ScanOverlay } from './extras/ScanOverlay';
-import { WORKSPACES, ADMIN_STATS, type Workspace } from './data/admin-mock';
 import { CLIENTS } from './data/install-mock';
 
-type PageId = 'overview' | 'sessions' | 'security' | 'connect' | 'backups' | 'settings' | 'admin';
+/**
+ * Admin / Workspace surfaces live in src/client/pages/Admin.tsx,
+ * src/client/pages/admin/, and src/client/data/admin-mock.ts. They are
+ * intentionally NOT imported by this free build — Vite tree-shakes them
+ * out of the shipped bundle. The Pro/Teams desktop build (v0.4+) will
+ * reattach them.
+ */
+
+type PageId = 'overview' | 'sessions' | 'security' | 'connect' | 'backups' | 'settings' | 'upgrade';
 
 interface NavSpec { id: PageId; label: string; icon: Parameters<typeof Icon>[0]['name'] }
 const NAV: NavSpec[] = [
-  { id: 'overview', label: 'Reclaim',   icon: 'reclaim' },
-  { id: 'sessions', label: 'Sessions',  icon: 'sessions' },
-  { id: 'security', label: 'Security',  icon: 'shield' },
-  { id: 'connect',  label: 'Connect',   icon: 'cpu' },
-  { id: 'backups',  label: 'Backups',   icon: 'archive' },
-  { id: 'admin',    label: 'Admin',     icon: 'org' },
+  { id: 'overview', label: 'Reclaim',  icon: 'reclaim' },
+  { id: 'sessions', label: 'Sessions', icon: 'sessions' },
+  { id: 'security', label: 'Security', icon: 'shield' },
+  { id: 'connect',  label: 'Connect',  icon: 'cpu' },
+  { id: 'backups',  label: 'Backups',  icon: 'archive' },
 ];
 
 export function App() {
@@ -36,14 +41,11 @@ export function App() {
   const derived = useDerived(sessions);
   const { toasts, toast } = useToasts();
 
-  const [page, setPage] = useState<PageId | 'settings'>('overview');
+  const [page, setPage] = useState<PageId>('overview');
   const [projFilter, setProjFilter] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [workspace, setWorkspace] = useState<Workspace>(WORKSPACES[0]);
-
-  const plan = workspace.plan;
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -82,8 +84,7 @@ export function App() {
     sessions: sessions.length,
     security: derived.totalSecrets,
     connect:  installedClients,
-    backups:  0, // populated lazily on Backups page open
-    admin:    plan !== 'free' ? ADMIN_STATS.openLeaks : undefined,
+    backups:  0,
   };
 
   return (
@@ -93,7 +94,6 @@ export function App() {
         <div className="tb-left">
           <div className="traffic"><i className="r" /><i className="y" /><i className="g" /></div>
           <div className="tb-brand"><Logo size={22} /><span className="tb-name">Con<b>Clear</b></span></div>
-          {plan !== 'free' && <span className={clsx('tb-plan', `plan-${plan}`)}>{workspace.name}</span>}
         </div>
         <div className="tb-center">
           <div className="cmdk" onClick={() => setPaletteOpen(true)}>
@@ -114,14 +114,12 @@ export function App() {
       {/* body */}
       <div className="body">
         <nav className="rail">
-          {/* workspace switcher would go here when wired */}
           {NAV.map(n => {
-            const locked = n.id === 'admin' && plan === 'free';
             const count = navCounts[n.id];
             return (
               <div
                 key={n.id}
-                className={clsx('navitem', page === n.id && 'active', locked && 'locked')}
+                className={clsx('navitem', page === n.id && 'active')}
                 onClick={() => {
                   setPage(n.id);
                   if (n.id !== 'sessions') setProjFilter(null);
@@ -129,17 +127,15 @@ export function App() {
               >
                 <span className="ni-icon"><Icon name={n.icon} size={18} /></span>
                 <span>{n.label}</span>
-                {locked
-                  ? <span className="ni-lock"><Icon name="lock" size={14} /></span>
-                  : count != null && (
-                    <span className={clsx('ni-count', (n.id === 'security' || n.id === 'admin') && count > 0 && 'alert')}>{count}</span>
-                  )}
+                {count != null && (
+                  <span className={clsx('ni-count', n.id === 'security' && count > 0 && 'alert')}>{count}</span>
+                )}
               </div>
             );
           })}
           <div className="rail-spacer" />
           <div
-            className={clsx('navitem', page === 'settings' && 'active')}
+            className={clsx('navitem', (page === 'settings' || page === 'upgrade') && 'active')}
             onClick={() => { setPage('settings'); setProjFilter(null); }}
             style={{ marginBottom: 4 }}
           >
@@ -164,7 +160,12 @@ export function App() {
 
         <main className="main">
           {loading && sessions.length === 0 ? (
-            <div className="page"><div className="empty-state"><div className="es-ico"><Logo size={32} /></div><div className="es-title">Loading sessions…</div></div></div>
+            <div className="page">
+              <div className="empty-state">
+                <div className="es-ico"><Logo size={32} /></div>
+                <div className="es-title">Loading sessions…</div>
+              </div>
+            </div>
           ) : (
             <>
               {page === 'overview' && <Overview sessions={sessions} onOpen={openSession} onGoto={gotoSessions} onRescan={rescan} onClean={() => toast('success', `Queued ${derived.problem.length} sessions — resizing oversized images`)} />}
@@ -172,10 +173,8 @@ export function App() {
               {page === 'security' && <Security sessions={sessions} onOpen={openSession} />}
               {page === 'connect'  && <Connect toast={toast} />}
               {page === 'backups'  && <Backups toast={toast} />}
-              {page === 'settings' && <Settings toast={toast} />}
-              {page === 'admin'    && (plan === 'free'
-                ? <Upgrade onSwitch={setWorkspace} />
-                : <Admin workspace={workspace} toast={toast} />)}
+              {page === 'settings' && <Settings toast={toast} onGoto={() => setPage('upgrade')} />}
+              {page === 'upgrade'  && <Upgrade onBack={() => setPage('settings')} />}
             </>
           )}
         </main>
