@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sessionRoutes from './routes/sessions.js';
+import installRoutes from './routes/install.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,7 @@ export const PORT = 3789;
 
 app.use(express.json());
 app.use('/api', sessionRoutes);
+app.use('/api/install', installRoutes);
 
 // In production, serve the built Vite frontend
 if (process.env.NODE_ENV === 'production') {
