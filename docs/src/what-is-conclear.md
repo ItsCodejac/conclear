@@ -39,7 +39,7 @@ Capabilities are grouped by *what the agent or user can do*. For each row: which
 
 | Capability | Tools | Surfaces |
 |---|---|---|
-| List every file the agent read / edited / wrote, with N versions | claude, cline | CLI `files`, MCP `conclear_file_content`, REST `GET /sessions/:id/files` |
+| List every file the agent read / edited / wrote, with N versions | claude, cline | CLI `files`, MCP `conclear_files` / `conclear_file_content`, REST `GET /sessions/:id/files` |
 | Retrieve the full content of a specific file version | claude, cline | CLI `files --latest`, MCP `conclear_file_content`, REST `GET /sessions/:id/files/:lineNumber` |
 | Glob/regex match on file paths across sessions | claude, cline | CLI `conclear files <pattern>` |
 
@@ -66,14 +66,17 @@ Why "best-effort" for some: search reads files line-by-line and looks for Anthro
 
 | Capability | Tools | Surfaces |
 |---|---|---|
-| Markdown export with rich tool details, diffs, headings | claude | UI, CLI `export`, REST `GET /sessions/:id/export` |
+| Markdown export with rich tool details, diffs, headings | claude, cline, gemini | UI, CLI `export`, REST `GET /sessions/:id/export` |
 | Plain-text export (`--format txt`) | claude | CLI |
 
 ### Security
 
 | Capability | Tools | Surfaces |
 |---|---|---|
-| Scan for high/medium/low-severity secrets (API keys, bearer tokens, AWS, env files, …) | claude | UI, CLI `scan`, REST `GET /sessions/:id/scan` |
+| Scan for high/medium/low-severity secrets (API keys, bearer tokens, AWS, GitHub PATs, env files, …) | claude, cline, gemini, cursor | UI, CLI `scan`, REST `GET /sessions/:id/scan`, MCP `conclear_scan_secrets` |
+| Redact matched secrets in place (replaces with `****REDACTED****`, writes backup) | claude, cline, gemini | UI Security page, REST `POST /sessions/:id/redact` |
+| Rotate-this-key link mapping a finding's type → provider rotation URL (OpenAI / Anthropic, AWS IAM, GitHub tokens, GitHub SSH keys) | all scanning tools | UI Security page |
+| Restore any prior version of a session file from a backup | all mutating tools | UI Backups page, REST `POST /api/backups/:name/restore` |
 
 ### Install / lifecycle
 
@@ -106,7 +109,8 @@ Honest about what doesn't work yet:
 
 - **Windsurf chats are not readable.** Cascade conversations are stored as encrypted protobuf files in `~/.codeium/windsurf/cascade/*.pb`. Reading them would require reverse-engineering Codeium's encryption. ConClear *can* still install its MCP server into Windsurf (`conclear install --windsurf`) so any Windsurf session can query *other* tools' history through ConClear.
 - **Cursor file history.** Cursor stores tool calls in `toolFormerData` blobs inside `cursorDiskKV` SQLite rows. The blob shape is parseable but not yet wired into `getFileHistory`. Until that lands, file recovery works for Claude Code and Cline only.
-- **Secrets scan, markdown export, secret scanning** are Claude-only. The data shapes for Cline are equivalent (Anthropic-shaped) so adding them is mostly mechanical.
+- **Cursor redact** is intentionally deferred. Rewriting SQLite blobs while Cursor is running is risky and the cache-invalidation story is murky. Cursor sessions are read-only for the secrets pipeline — scan finds them, rotate links roll them, and the recommended cleanup is to delete the session inside Cursor itself.
+- **Copilot Chat capability gain.** Read-only today; no scan / redact / export. Lower priority because Copilot's session data is the smallest of the five and rarely contains pasted credentials in the wild.
 - **MCP coverage for Cursor's `suggestedCodeBlocks` and `checkpointId`.** Both fields are parsed but unused. They could surface as "code Cursor proposed that I didn't accept" and a per-bubble rewind navigator respectively.
 
 These gaps are listed deliberately — every one is a path to a new capability with the primitives already in place.

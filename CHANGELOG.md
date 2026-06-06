@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-06-06
+
+Docs sweep, README rewrite, repo cleanup. No code changes other than the version bump and a small script under `tools/`.
+
+### Added
+
+- **`tools/generate-llms-txt.mjs`** — regenerates `llms.txt` by concatenating every page referenced from `docs/src/SUMMARY.md` in order. Run after any docs change.
+- **`docs/src/reclaim.md`, `security.md`, `connect.md`, `backups.md`, `session-detail.md`** — new pages for the post-rebuild UI surfaces.
+
+### Changed
+
+- **README** rewritten for 0.4.0 reality: drops the "before Claude tells you images are too big" framing, leads with the four things ConClear actually does (reclaim, redact, recover, MCP bridge), adds the security loop section, updates the capability matrix and MCP tools list, refreshes keyboard shortcuts to match the rebuild.
+- **`skill.md`** — adds `conclear scan` to the command table and `conclear_files` / `conclear_scan_secrets` to the MCP surface so agents reading the skill see the full toolset.
+- **`docs/src/`** — `web-ui.md`, `secret-scanning.md`, `mcp-server.md`, `operations.md`, `supported-tools.md`, `introduction.md`, `what-is-conclear.md`, and per-tool pages for Cline / Cursor / Gemini all updated to reflect 0.4.0 capability parity. SUMMARY restructured: top-level pages now cover the post-rebuild UI (Reclaim / Sessions / Security / Connect / Backups) and session-detail tabs are grouped separately.
+- **`llms.txt`** regenerated from the new docs.
+
+### Removed
+
+- **`docs/screenshots/v0.2/` and `docs/screenshots/demo-*.png`** — pre-rebuild UI captures the README had been pointing at. Fresh 0.4 captures will land separately.
+- **`docs/src/disk-usage.md`** — content folded into `reclaim.md` and `backups.md`.
+
+### Git history
+
+Every commit prior to this release was rewritten to strip `Co-Authored-By: Claude *` and `Generated with Claude Code` lines. GitHub renders those as collaborators on the repo contributor list, which had caused real social friction. The factual product references in commit prose ("Claude Code JSONL parser", etc.) were preserved — those describe what ConClear supports.
+
 ## [0.4.0] - 2026-06-03
 
 Closes the security loop end-to-end and brings every adapter except Copilot up to capability parity for the things that actually matter (scan / redact / export). The single biggest gap from earlier releases — "ConClear's interesting features only work on Claude Code sessions" — is closed.

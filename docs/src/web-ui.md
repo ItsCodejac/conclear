@@ -1,46 +1,51 @@
 # Web UI
 
-The ConClear web UI is a React application served by a local Express server on port 3789. Launch it with:
+The ConClear web UI is a React + Vite application served by a local Express server on port 3789. Launch it with:
 
 ```bash
 conclear
 ```
 
+The UI is dark-only and uses the Signal Lime accent system (`#cbf24e`). Nothing in it sends data anywhere — everything is local file I/O over a localhost socket.
+
 ## Layout
 
-The UI uses a pane layout with two main areas:
+A single-window shell with three regions:
 
-- **Left pane** -- session list with search, sort, and filter controls.
-- **Right pane** -- detail view with tabs for the selected session.
+- **Titlebar** — brand, global search palette (`⌘K`), MCP chip, total bytes, rescan button.
+- **Left rail** — top-level navigation: Reclaim, Sessions, Security, Connect, Backups, Settings. Counts on the right side of each item (Sessions count, Security count with alert styling when > 0, Connect count of installed clients).
+- **Main pane** — the active page.
 
-Double-click a session to expand it to full-panel mode. Press Escape to return to the split view.
+When you open a session from the Sessions page, the detail view replaces the main pane with a tabbed view (Summary / Images / Chat / Timeline / Files / Security) — see [Session Detail Tabs](session-detail.md).
 
-## Tabs
+## Pages
 
-When you select a session, the detail pane shows these tabs:
+| Page | Purpose | Doc |
+|---|---|---|
+| Reclaim | Overview — what's taking space, what needs attention | [reclaim.md](reclaim.md) |
+| Sessions | Per-tool session list with project grouping, filtering, sorting | [session-browser.md](session-browser.md) |
+| Security | Findings across every scanned session, with redact + rotate | [security.md](security.md) |
+| Connect | Install ConClear into AI clients (MCP + Skill) | [connect.md](connect.md) |
+| Backups | Every restore point with action + origin + Restore button | [backups.md](backups.md) |
 
-| Tab | Content |
-|-----|---------|
-| Images | Thumbnails of all images in the session, with strip/resize controls |
-| Timeline | Chronological event log of all operations |
-| Chat | Conversation replay with user/assistant messages |
-| Files | File version history with syntax-highlighted viewer |
+## Keyboard
 
-## Context Menu
+| Key | Action |
+|---|---|
+| `⌘K` / `Ctrl+K` | Open search palette (global across sessions, messages, files) |
+| `⌘R` / `Ctrl+R` | Rescan sessions |
+| `Esc` | Close palette / detail view / lightbox |
 
-Right-click a session to access:
+See [Keyboard Shortcuts](keyboard-shortcuts.md) for the full list.
 
-- Strip all images
-- Resize all images
-- Copy resume command
-- Export as markdown
-- Scan for secrets
+## Caching
 
-## Toolbar
+To make navigation feel instant:
 
-The toolbar at the top of the detail pane shows:
+- **Sessions** hydrate from `localStorage` on cold start, with a background refresh.
+- **Scan results** are kept in a module-level singleton shared by the sidebar count, the Security page, the per-session Security tab, and the SessionDetail header. Switching pages never re-scans.
+- **Backups** list is fetched fresh per visit (cheap; small directory listing).
 
-- Session name and metadata (message count, image count, total size)
-- Tab switcher
-- Action buttons for the current tab
-- Help button (`?`)
+## Demo mode
+
+If you want to explore the UI without your real session data, launch with `conclear --demo` — every adapter is rerooted at the bundled fixtures.

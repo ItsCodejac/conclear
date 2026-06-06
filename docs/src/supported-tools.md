@@ -14,6 +14,20 @@ ConClear reads session data from five AI coding tools. Each tool stores session 
 | Cline / Roo Code | JSON | VS Code `globalStorage/` |
 | GitHub Copilot | JSON | VS Code `workspaceStorage/` |
 
+## Capability matrix
+
+What each adapter actually implements today. Anything missing here is a planned gap, not a hidden feature.
+
+| Tool | Read | Images | File history | Scan | Redact | Export |
+|---|---|---|---|---|---|---|
+| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Cline / Roo Code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Gemini CLI | ✓ | ✓ | — | ✓ | ✓ | ✓ |
+| Cursor | ✓ | ✓ | — | ✓ | — | — |
+| GitHub Copilot Chat | ✓ | — | — | — | — | — |
+
+Cursor redact is intentionally deferred — rewriting live SQLite blobs while Cursor is running is risky. Use the [Security](security.md) page's rotate links to roll any leaked credentials and delete the affected session inside Cursor itself.
+
 ## Detection
 
 On startup, ConClear checks each tool's data directory. If the directory exists, that adapter is activated and its sessions are included in the unified session list.

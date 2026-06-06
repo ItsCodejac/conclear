@@ -17,7 +17,13 @@ Each session file is a complete JSON document containing the full conversation w
 - Session listing with metadata
 - Image preview, strip, and restore
 - Conversation replay
+- Secret scanning and **in-place redact** across all three Gemini content shapes (string, `{ text }`, `parts[]`)
+- Markdown export
 - Mtime-based caching for fast re-scans
+
+## Not yet
+
+- File history (no equivalent file-version structure in Gemini CLI's session format)
 
 ## Detection
 

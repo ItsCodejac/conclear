@@ -27,7 +27,11 @@ Where VS Code `globalStorage` is:
 - Session listing with metadata
 - Image preview, strip, resize, and restore
 - Conversation replay
+- File history with full version content
+- Secret scanning and **in-place redact**
+- Markdown export
+- Token / cost analytics from `task_metadata.json` (`tokensIn`, `tokensOut`, `cacheReads`, `cacheWrites`, `totalCostUsd`)
 
 ## Notes
 
-ConClear scans both Cline and Roo Code directories. Sessions from both tools appear in the unified session list, distinguished by their tool label.
+ConClear scans both Cline and Roo Code directories. Sessions from both tools appear in the unified session list, distinguished by their tool label. Redact rewrites the `api_conversation_history.json` file as pretty-printed JSON to keep diffs clean.

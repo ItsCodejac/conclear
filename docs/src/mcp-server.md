@@ -86,6 +86,24 @@ Get clean conversation text from a session (user and assistant messages only).
 
 **Returns:** JSON array of messages with `role`, `timestamp`, `text`. Total output is capped at 100KB.
 
+### conclear_files
+
+List every file the agent read, edited, or wrote in a session, with version counts per file. Use this before `conclear_file_content` when you don't know the exact path — lets you pick the file you want by name, then fetch its content.
+
+**Inputs:**
+- `session` (string, required) -- session name, ID, or partial match
+
+**Returns:** JSON array of `{ filePath, versionCount, latestOperation, latestTimestamp }`. Adapters that don't support file history (Cursor, Gemini, Copilot) return a descriptive error.
+
+### conclear_scan_secrets
+
+Scan a session for leaked API keys, tokens, AWS credentials, GitHub PATs, .env dumps, and other secrets. Matched values are returned with display redaction (first 4 / last 4 chars) so the agent can describe what leaked without re-exposing it.
+
+**Inputs:**
+- `session` (string, required) -- session name, ID, or partial match
+
+**Returns:** JSON array of findings — `{ type, severity, pattern, context, lineNumber, timestamp }`. Empty array if nothing matched. Adapters that don't support scanning (Copilot today) return a descriptive error.
+
 ## Tool Annotations
 
-All MCP tools are annotated as read-only, non-destructive, and idempotent. They do not modify session data.
+All MCP tools are annotated as read-only, non-destructive, and idempotent. They do not modify session data. Redact and image-mutation operations are intentionally **not** exposed via MCP — destructive operations always go through the web UI for human confirmation.
