@@ -20,6 +20,8 @@ Or run without installing:
 npx conclear
 ```
 
+![Reclaim — overview of what's taking space and what needs attention](docs/screenshots/v0.4/01-reclaim.png)
+
 ## What it does
 
 ### Reclaim disk space
@@ -30,17 +32,25 @@ Every screenshot you paste into a session sits in that file forever. ConClear fi
 
 Pasted API keys, AWS keys, GitHub tokens, `.env` dumps, bearer tokens, database URLs — anything that ends up in a session file is stored in plaintext. ConClear scans for them, shows you where they are, redacts them with one click (every redact writes a backup first), and links to the right rotation page so you can roll the credential.
 
+![Security — findings, redact buttons, and rotate-this-key links](docs/screenshots/v0.4/03-security.png)
+
 ### Recover lost work
 
 Every file your agent read, wrote, or edited during a session is preserved with full content and version history. Open the session, browse versions, view with syntax highlighting, copy the code back out.
+
+![Session detail — Files tab with per-file version history](docs/screenshots/v0.4/05-session-detail.png)
 
 ### Bridge sessions to your agents (MCP)
 
 ConClear ships with an MCP server. Install it into one click into Claude Code, Cursor, Windsurf, Antigravity, VS Code, Zed, Cline, Codex CLI, Continue, Kiro CLI, or Claude Desktop, and your agents can search, summarize, list files, scan secrets, and pull conversation context from any past session — without leaving the chat.
 
+![Connect — the 7 MCP tools and per-client install toggles](docs/screenshots/v0.4/04-connect.png)
+
 ### Browse and replay
 
 Visual session browser, full conversation viewer with role filters, timeline of every event (edits, bash commands, tool calls, errors), file diff viewer, markdown export. Search across everything with `⌘K`.
+
+![Sessions — unified per-project view across every detected AI tool](docs/screenshots/v0.4/02-sessions.png)
 
 ## Supported tools
 
