@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-06-06
+
+### Fixed
+
+- **Reclaim "Needs attention" card** read a stale per-session `secretCount` placeholder (always 0) instead of the live scan cache. Now reads `scan.totalFindings` and `scan.sessionsWithFindings` so it matches the sidebar count and the Security page.
+
 ## [0.4.1] - 2026-06-06
 
 Docs sweep, README rewrite, repo cleanup. No code changes other than the version bump and a small script under `tools/`.

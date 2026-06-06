@@ -7,6 +7,7 @@ import { Meter } from '../components/Meter';
 import { SegBar } from '../components/SegBar';
 import { ToolBadge } from '../components/ToolBadge';
 import { useDerived } from '../hooks/useDerived';
+import { useScanCache } from '../hooks/useScanCache';
 import { OnboardingBanner } from '../extras/OnboardingBanner';
 
 interface Props {
@@ -27,6 +28,7 @@ function szClass(b: number, big: number): string {
 
 export function Overview({ sessions, onOpen, onGoto, onClean, onRescan, onConnect }: Props) {
   const d = useDerived(sessions);
+  const scan = useScanCache(sessions);
   const reclaimPct = d.totalSize > 0 ? (d.totalImageBytes / d.totalSize) * 100 : 0;
   const maxProj = d.byProject[0]?.size || 1;
   const maxTool = d.byTool[0]?.size || 1;
@@ -82,8 +84,8 @@ export function Overview({ sessions, onOpen, onGoto, onClean, onRescan, onConnec
           </div>
           <div className="card statcard dangerstat">
             <div className="s-label"><Icon name="shield" size={14} /> Needs attention</div>
-            <div className="s-val">{d.problem.length + d.secretSessions.length}</div>
-            <div className="s-sub">{d.problem.length} oversized · {d.totalSecrets} secrets in {d.secretSessions.length} sessions</div>
+            <div className="s-val">{d.problem.length + scan.sessionsWithFindings.length}</div>
+            <div className="s-sub">{d.problem.length} oversized · {scan.totalFindings} secrets in {scan.sessionsWithFindings.length} sessions</div>
           </div>
         </div>
       </div>
