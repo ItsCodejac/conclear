@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-06-06
+
+Discoverability metadata sweep — no code changes, just making the project findable.
+
+### Changed
+
+- **package.json**: `description` rewritten to reflect 0.4 reality (security, MCP, file recovery, multi-tool — not just image cleanup). `keywords` expanded from 9 to 25, covering every supported tool name + every primary capability + the MCP / security framing. Added `homepage` pointing at the GitHub repo.
+- **GitHub repo metadata**: description matches the npm one. Homepage points to the npm package page. 15 topics added covering tools, capabilities, and tech stack — none were set previously, so the repo wasn't appearing in GitHub topic browses or "related repositories" suggestions.
+
 ## [0.4.2] - 2026-06-06
 
 ### Fixed

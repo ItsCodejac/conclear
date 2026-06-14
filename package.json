@@ -1,7 +1,8 @@
 {
   "name": "conclear",
-  "description": "Visual utility for cleaning AI coding assistant session data",
-  "version": "0.4.2",
+  "description": "Local utility for managing AI coding session data — disk space, leaked secrets, lost files, conversation history. CLI + web UI + MCP server. Multi-tool: Claude Code, Cursor, Cline, Gemini CLI, Copilot Chat.",
+  "version": "0.4.3",
+  "homepage": "https://github.com/ItsCodejac/conclear",
   "type": "module",
   "license": "MIT",
   "author": "Cojac",
@@ -10,15 +11,31 @@
     "url": "git+https://github.com/ItsCodejac/conclear.git"
   },
   "keywords": [
+    "ai-coding-tools",
+    "mcp",
+    "model-context-protocol",
+    "session-management",
+    "secret-scanning",
+    "session-cleanup",
     "claude",
-    "ai",
-    "session",
-    "cleanup",
-    "images",
+    "claude-code",
     "cursor",
-    "gemini",
+    "cline",
+    "roo-code",
+    "gemini-cli",
     "copilot",
-    "cline"
+    "windsurf",
+    "antigravity",
+    "zed",
+    "cli-tool",
+    "developer-tools",
+    "security-tools",
+    "image-strip",
+    "image-resize",
+    "redact-secrets",
+    "file-recovery",
+    "typescript",
+    "nodejs"
   ],
   "engines": {
     "node": ">=22.0.0"
