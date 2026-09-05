@@ -10,25 +10,35 @@ const inside = (parent, child) => child === parent || child.startsWith(parent + 
 const excluded = new Set(['.git', 'node_modules', 'dist', '.DS_Store']);
 const message = error => error instanceof Error ? error.message : String(error);
 
-async function atomic(path, data) {
+async function atomic(path, data, checkpoint) {
   const tmp = `${path}.${randomUUID()}.tmp`;
   const handle = await fs.open(tmp, 'wx', 0o600);
-  try { await handle.writeFile(data); await handle.sync(); }
+  try {
+    await checkpoint?.('opened', path);
+    await handle.writeFile(data);
+    await checkpoint?.('written', path);
+    await handle.sync();
+    await checkpoint?.('synced', path);
+  }
   finally { await handle.close(); }
   await fs.rename(tmp, path);
+  await checkpoint?.('renamed', path);
   const dir = await fs.open(dirname(path), 'r');
   try { await dir.sync(); } finally { await dir.close(); }
+  await checkpoint?.('durable', path);
 }
 
 export class Recorder {
-  constructor(project, store, { intervalMs = 1000, notifications = true } = {}) {
+  constructor(project, store, { intervalMs = 1000, notifications = true, storageCheckpoint } = {}) {
     if (!Number.isInteger(intervalMs) || intervalMs < 20) throw new Error('intervalMs must be an integer >= 20');
     this.project = resolve(project);
     this.store = resolve(store);
     this.intervalMs = intervalMs;
     this.notifications = notifications;
+    // Test instrumentation only; no CLI flag, environment trigger, or AI hook.
+    this.storageCheckpoint = storageCheckpoint;
     this.queue = Promise.resolve();
-    this.status = { state: 'starting', watcher: 'off', lastSuccessfulScan: null, lastSnapshot: null };
+    this.status = { state: 'starting', watcher: 'off', lastSuccessfulScan: null, lastSnapshot: null, failedScanCount: 0, recentFailures: [] };
   }
 
   async start() {
@@ -70,6 +80,8 @@ export class Recorder {
       let previous;
       try { previous = JSON.parse(await fs.readFile(join(this.store, 'status.json'), 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
+      this.status.failedScanCount = previous?.failedScanCount ?? 0;
+      this.status.recentFailures = previous?.recentFailures ?? [];
       this.status.interruption = previous ? {
         since: previous.lastSuccessfulScan,
         resumedAt: new Date().toISOString(),
@@ -148,7 +160,7 @@ export class Recorder {
             if (hash(await fs.readFile(object)) !== digest) throw new Error(`Corrupt recovery object: ${digest}`);
           } catch (error) {
             if (error.code !== 'ENOENT') throw error;
-            await atomic(object, data);
+            await atomic(object, data, this.storageCheckpoint);
             newObjectBytes += data.length;
           }
           entries.push({ path: local, hash: digest, bytes: data.length, mode: after.mode & 0o777 });
@@ -160,7 +172,7 @@ export class Recorder {
       if (fingerprint !== this.fingerprint) {
         const id = `${Date.now()}-${randomUUID()}`;
         snapshot = { version: 1, id, project: this.project, startedAt, finishedAt: new Date().toISOString(), reason, atomic: false, entries, skipped };
-        await atomic(join(this.store, 'snapshots', `${id}.json`), JSON.stringify(snapshot));
+        await atomic(join(this.store, 'snapshots', `${id}.json`), JSON.stringify(snapshot), this.storageCheckpoint);
         this.status.lastSnapshot = id;
         this.fingerprint = fingerprint;
       }
@@ -170,6 +182,8 @@ export class Recorder {
     } catch (error) {
       this.status.state = 'error';
       this.status.lastError = { at: new Date().toISOString(), message: message(error) };
+      this.status.failedScanCount++;
+      this.status.recentFailures = [...this.status.recentFailures, this.status.lastError].slice(-10);
       await atomic(join(this.store, 'status.json'), JSON.stringify(this.status)).catch(() => {});
       throw error;
     }

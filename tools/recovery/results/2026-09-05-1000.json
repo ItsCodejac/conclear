@@ -1,0 +1,174 @@
+{
+  "environment": {
+    "node": "v26.4.0",
+    "platform": "darwin",
+    "release": "24.6.0"
+  },
+  "fileCount": 1000,
+  "fileBytes": 16384,
+  "phases": [
+    {
+      "name": "paced-concurrent-writes",
+      "rounds": 80,
+      "delay": 20,
+      "completedWrites": 160,
+      "capturedVersions": 14,
+      "missedVersions": 146,
+      "perWriter": [
+        {
+          "file": "paced-concurrent-writes-inplace.ts",
+          "completed": 80,
+          "captured": 7
+        },
+        {
+          "file": "paced-concurrent-writes-rename.ts",
+          "completed": 80,
+          "captured": 7
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 38,
+        "p95": 214,
+        "max": 214
+      },
+      "elapsedMs": 2102.865540999999,
+      "cpu": {
+        "user": 693761,
+        "system": 719326
+      },
+      "successfulScans": 7,
+      "failedScans": 0,
+      "scanP95Ms": 468.0431669999998,
+      "beforeStorage": {
+        "objects": {
+          "files": 1000,
+          "bytes": 16384000
+        },
+        "snapshots": {
+          "files": 1,
+          "bytes": 124319
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 1015,
+          "bytes": 16629760
+        },
+        "snapshots": {
+          "files": 8,
+          "bytes": 996755
+        }
+      }
+    },
+    {
+      "name": "burst-concurrent-writes",
+      "rounds": 200,
+      "delay": 0,
+      "completedWrites": 400,
+      "capturedVersions": 2,
+      "missedVersions": 398,
+      "perWriter": [
+        {
+          "file": "burst-concurrent-writes-inplace.ts",
+          "completed": 200,
+          "captured": 1
+        },
+        {
+          "file": "burst-concurrent-writes-rename.ts",
+          "completed": 200,
+          "captured": 1
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 224,
+        "p95": 250,
+        "max": 250
+      },
+      "elapsedMs": 409.2231660000016,
+      "cpu": {
+        "user": 105357,
+        "system": 100400
+      },
+      "successfulScans": 1,
+      "failedScans": 2,
+      "scanP95Ms": 218.9862090000006,
+      "beforeStorage": {
+        "objects": {
+          "files": 1015,
+          "bytes": 16629760
+        },
+        "snapshots": {
+          "files": 8,
+          "bytes": 996755
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 1017,
+          "bytes": 16662528
+        },
+        "snapshots": {
+          "files": 9,
+          "bytes": 1121656
+        }
+      }
+    }
+  ],
+  "baseline": {
+    "elapsedMs": 8798.757,
+    "cpu": {
+      "user": 496960,
+      "system": 743399
+    },
+    "metrics": {
+      "durationMs": 8771.388958,
+      "bytesRead": 16384000,
+      "newObjectBytes": 16384000,
+      "files": 1000
+    }
+  },
+  "restoration": {
+    "baselineFilesVerified": 1000,
+    "finalFilesVerified": 904,
+    "exactMatch": true
+  },
+  "storage": {
+    "objects": {
+      "files": 1017,
+      "bytes": 16662528
+    },
+    "snapshots": {
+      "files": 12,
+      "bytes": 1494745
+    }
+  },
+  "peakSampledRssBytes": 99254272,
+  "scanFailures": [
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 9.622124999999869,
+      "error": "File changed during read: burst-concurrent-writes-inplace.ts"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 11.145333000000392,
+      "error": "File changed during read: burst-concurrent-writes-inplace.ts"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 9.676792000000205,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00194.ts'"
+    }
+  ],
+  "limits": [
+    "Synthetic local workload; one run, not a real-world miss rate.",
+    "CPU measures this harness and recorder, excluding writer children; microseconds.",
+    "Capture delay covers captured versions only, from write completion to manifest publication; negative scheduling differences clamp to zero.",
+    "RSS includes harness; 25ms sampling may miss peaks. Process crashes are not power-loss tests."
+  ],
+  "runDate": "2026-09-05",
+  "command": "node tools/recovery/stress.mjs 1000 16384"
+}

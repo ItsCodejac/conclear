@@ -32,7 +32,7 @@ No AI, Git commits, or conversation parsing participates in capture. No commands
 
 **There is no promise to capture every intermediate version or prevent all code loss.** Multiple writes can occur before a scan reads a file. Notifications are hints, not a write journal. Reconciliation captures current contents but cannot recover overwritten contents it never observed. Snapshots are not atomic across files and are not certified working project states.
 
-The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. There is no independent health supervisor yet. Detected gaps do not represent all possible missed writes.
+The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. There is no independent health supervisor yet. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
 
 The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, encrypt snapshots, limit total storage, or prune history. Included configuration files are copied as bytes, so use disposable fixtures. Repeated scans read the whole included tree; this is not yet a large-project performance design.
 
@@ -49,7 +49,9 @@ node tools/recovery/measure.mjs
 
 The recovery suite covers byte-for-byte restoration after shell writes, binary contents, renames and deletions; real watcher notifications; reconciliation with notifications disabled; SIGKILL and restart; scan failure; exclusions; and refusal of overwrite, path traversal, concurrent writers, and corrupt objects. It uses temporary projects and stores. A sandbox that disallows filesystem watching cannot pass the real-notification test; do not interpret that as verified notification support.
 
-A controlled loss test disables notifications and completes 100 overwrites between scans. It preserves the baseline and final version only: the other 99 burst versions are absent. This demonstrates a limitation, not a measured real-world watcher miss rate. The crash test kills a running recorder after a completed baseline and introduces an unfinished temporary manifest; it does not exhaustively inject crashes into every storage operation.
+A controlled loss test disables notifications and completes 100 overwrites between scans. It preserves the baseline and final version only: the other 99 burst versions are absent. This demonstrates a limitation, not a measured real-world watcher miss rate.
+
+Ten additional crash tests pause a child recorder at object and manifest storage boundaries: temporary file opened, contents written, file synced, renamed into place, and directory synced. Each test sends SIGKILL, restores every published manifest before restart, then checks both old and current recovery after restart. All ten passed locally. This verifies process-crash behavior at those boundaries, not arbitrary mid-system-call interruption, lock-acquisition crashes, hardware failure, or power-loss durability. A test-only constructor callback supplies the pause points; normal CLI operation has no fault-injection switch.
 
 One local synthetic run on 2026-09-05 used 100 files totaling 409,890 bytes:
 
@@ -64,6 +66,41 @@ One local synthetic run on 2026-09-05 used 100 files totaling 409,890 bytes:
 
 These are single-run, small-fixture elapsed times, not throughput guarantees or CPU benchmarks. Initial object sync cost and full-tree rereading need measurement on representative projects before selecting production scan intervals.
 
+## Larger workload results
+
+Run the disposable stress harness separately from other benchmarks:
+
+```bash
+node tools/recovery/stress.mjs 1000 16384 > /tmp/conclear-stress-1000.json
+node tools/recovery/stress.mjs 5000 16384 > /tmp/conclear-stress-5000.json
+```
+
+Each fixture starts with uniquely hashed 16 KiB files. Two child processes then write separate files concurrently: one rewrites in place, the other writes a temporary file and renames it. The paced phase completes 80 writes per writer, waiting 20 ms after each write; the burst phase completes 200 per writer without a deliberate delay. A version counts as captured only if a published manifest references its exact bytes at its intended path. Unreferenced objects and temporary filenames do not count. The harness waits for both final versions to be observed automatically, then performs bulk shell renames/deletions and explicitly captures the settled result for restoration checks.
+
+These are aggressive synthetic workloads, not representative typing rates. Single local runs on 2026-09-05 used Node v26.4.0 on Darwin 24.6.0. Raw reports, with temporary paths replaced, are in `tools/recovery/results/`.
+
+| Measurement | 1,000 files / 16.4 MB | 5,000 files / 81.9 MB |
+|-------------|-----------------------|-----------------------|
+| Initial baseline elapsed | 8.8 s | 43.4 s |
+| Paced versions captured | 14 / 160 | 2 / 160 |
+| Burst versions captured | 2 / 400 | 2 / 400 |
+| Paced captured-version delay, p95 | 214 ms | 183 ms |
+| Burst captured-version delay, p95 | 250 ms | 1,515 ms |
+| Paced scan duration, p95 | 468 ms | 1,772 ms |
+| Paced phase CPU time, user + system | 1.41 s | 1.00 s |
+| Burst phase CPU time, user + system | 0.21 s | 1.65 s |
+| Peak sampled process RSS | 99.3 MB | 209.5 MB |
+| Final object storage | 16.66 MB | 81.99 MB |
+| Final manifest storage | 1.49 MB / 12 manifests | 2.47 MB / 4 manifests |
+| Original files restored exactly | 1,000 / 1,000 | 5,000 / 5,000 |
+| Settled final files restored exactly | 904 / 904 | 4,904 / 4,904 |
+
+CPU includes recorder and harness work but excludes writer child processes. RSS also includes the harness and uses 25 ms sampling. Capture delay only describes versions that survived; a low delay does not imply good coverage. Metrics and manifest counts depend on scheduling and should not be treated as stable performance guarantees. The 1,000-file run preceded the failure-history addition; the 5,000-file run included it.
+
+Concurrent modifications caused scan failures rather than publication of those failed scans. The 5,000-file bulk rename/delete phase produced ten failed scans; all ten remained in persisted status after successful recovery. Original and final recovery matched in both workloads, while most intermediate versions were missed. Full manifests also grow in proportion to project size even when only a few files change.
+
 ## Next decision
 
-The experiment establishes basic preservation and recovery while making the observation gap reproducible. Before offering automatic protection, extend crash injection, measure representative workloads and active-write capture rates, settle storage scope and retention, then implement operating-system service lifecycle and independent health reporting. Evaluate optional pre-operation hooks against measured gaps. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism.
+Improve the capture path before installing a background service. These results support investigating prompt capture of changed files, retaining a pending-change set while scans run, and keeping full-tree reconciliation as a fallback. Compare that implementation against the same harness before claiming an improvement. Also investigate manifest growth and baseline sync cost before setting retention, storage caps, or scan intervals.
+
+Automatic service lifecycle and independent health reporting follow those checks. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The prototype remains developer-only.

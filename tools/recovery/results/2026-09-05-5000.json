@@ -1,0 +1,217 @@
+{
+  "environment": {
+    "node": "v26.4.0",
+    "platform": "darwin",
+    "release": "24.6.0"
+  },
+  "fileCount": 5000,
+  "fileBytes": 16384,
+  "phases": [
+    {
+      "name": "paced-concurrent-writes",
+      "rounds": 80,
+      "delay": 20,
+      "completedWrites": 160,
+      "capturedVersions": 2,
+      "missedVersions": 158,
+      "perWriter": [
+        {
+          "file": "paced-concurrent-writes-inplace.ts",
+          "completed": 80,
+          "captured": 1
+        },
+        {
+          "file": "paced-concurrent-writes-rename.ts",
+          "completed": 80,
+          "captured": 1
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 146,
+        "p95": 183,
+        "max": 183
+      },
+      "elapsedMs": 1989.8072909999973,
+      "cpu": {
+        "user": 432858,
+        "system": 562415
+      },
+      "successfulScans": 1,
+      "failedScans": 0,
+      "scanP95Ms": 1771.9223330000023,
+      "beforeStorage": {
+        "objects": {
+          "files": 5000,
+          "bytes": 81920000
+        },
+        "snapshots": {
+          "files": 1,
+          "bytes": 620319
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 5002,
+          "bytes": 81952768
+        },
+        "snapshots": {
+          "files": 2,
+          "bytes": 1240931
+        }
+      }
+    },
+    {
+      "name": "burst-concurrent-writes",
+      "rounds": 200,
+      "delay": 0,
+      "completedWrites": 400,
+      "capturedVersions": 2,
+      "missedVersions": 398,
+      "perWriter": [
+        {
+          "file": "burst-concurrent-writes-inplace.ts",
+          "completed": 200,
+          "captured": 1
+        },
+        {
+          "file": "burst-concurrent-writes-rename.ts",
+          "completed": 200,
+          "captured": 1
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 1487,
+        "p95": 1515,
+        "max": 1515
+      },
+      "elapsedMs": 1740.2117079999953,
+      "cpu": {
+        "user": 804935,
+        "system": 845914
+      },
+      "successfulScans": 2,
+      "failedScans": 0,
+      "scanP95Ms": 913.9861249999958,
+      "beforeStorage": {
+        "objects": {
+          "files": 5002,
+          "bytes": 81952768
+        },
+        "snapshots": {
+          "files": 2,
+          "bytes": 1240931
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 5004,
+          "bytes": 81985536
+        },
+        "snapshots": {
+          "files": 3,
+          "bytes": 1861834
+        }
+      }
+    }
+  ],
+  "baseline": {
+    "elapsedMs": 43366.033749999995,
+    "cpu": {
+      "user": 2053527,
+      "system": 3392912
+    },
+    "metrics": {
+      "durationMs": 43344.598333,
+      "bytesRead": 81920000,
+      "newObjectBytes": 81920000,
+      "files": 5000
+    }
+  },
+  "restoration": {
+    "baselineFilesVerified": 5000,
+    "finalFilesVerified": 4904,
+    "exactMatch": true
+  },
+  "storage": {
+    "objects": {
+      "files": 5004,
+      "bytes": 81985536
+    },
+    "snapshots": {
+      "files": 4,
+      "bytes": 2470941
+    }
+  },
+  "peakSampledRssBytes": 209469440,
+  "scanFailures": [
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 14.364166999999725,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00003.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 12.759124999996857,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00027.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "reconciliation",
+      "durationMs": 22.01995899999747,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00036.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 11.478957999999693,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00058.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 12.12354200000118,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00080.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 13.356292000004032,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00102.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 13.01141700000153,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00126.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 13.975791999997455,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00147.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 15.584958000006736,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00168.ts'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 11.700666999997338,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/file-00185.ts'"
+    }
+  ],
+  "persistedFailureCount": 10,
+  "limits": [
+    "Synthetic local workload; one run, not a real-world miss rate.",
+    "CPU measures this harness and recorder, excluding writer children; microseconds.",
+    "Capture delay covers captured versions only, from write completion to manifest publication; negative scheduling differences clamp to zero.",
+    "RSS includes harness; 25ms sampling may miss peaks. Process crashes are not power-loss tests."
+  ],
+  "runDate": "2026-09-05",
+  "command": "node tools/recovery/stress.mjs 5000 16384"
+}

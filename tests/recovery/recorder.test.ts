@@ -134,6 +134,15 @@ describe('experimental recovery recorder', () => {
     expect(recorder.status.state).toBe('error');
     expect(recorder.status.lastSuccessfulScan).toBe(last);
     expect(await snapshots(store)).toHaveLength(1);
+    await fs.rename(join(root, 'moved'), project);
+    await recorder.capture('recovered');
+    expect(recorder.status.lastError).toBeNull();
+    expect(recorder.status.failedScanCount).toBe(1);
+    expect(recorder.status.recentFailures).toHaveLength(1);
+    await recorder.stop();
+    const restarted = await start(project, store);
+    expect(restarted.status.failedScanCount).toBe(1);
+    expect(restarted.status.recentFailures[0].message).toContain('ENOENT');
   });
 
   it('reports excluded files and skips symlinks instead of following them', async () => {
