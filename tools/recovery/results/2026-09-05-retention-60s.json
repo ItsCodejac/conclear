@@ -1,0 +1,88 @@
+{
+  "seconds": 60,
+  "options": {
+    "maxBytes": 262144,
+    "maxSnapshots": 12,
+    "intervalMs": 250
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "retained": 12,
+      "failures": 3,
+      "storage": {
+        "at": "2026-09-05T11:00:33.824Z",
+        "payloadBytes": 103282,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1788606013872-cf280601-6c8a-493f-88e8-42de0e5c332b",
+          "1788606033801-1f576d6b-5697-4d0f-b0f8-a3337067f0b3"
+        ],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "reservedPayloadBytes": 103282
+      },
+      "rssBytes": 89604096
+    },
+    {
+      "cycle": 1,
+      "retained": 12,
+      "failures": 8,
+      "storage": {
+        "at": "2026-09-05T11:00:54.809Z",
+        "payloadBytes": 103296,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1788606013872-cf280601-6c8a-493f-88e8-42de0e5c332b",
+          "1788606054761-15a8b41a-df7e-4f50-a421-de12a14164a3"
+        ],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "reservedPayloadBytes": 103296
+      },
+      "rssBytes": 103759872
+    },
+    {
+      "cycle": 2,
+      "retained": 12,
+      "failures": 11,
+      "storage": {
+        "at": "2026-09-05T11:01:15.972Z",
+        "payloadBytes": 103270,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1788606013872-cf280601-6c8a-493f-88e8-42de0e5c332b",
+          "1788606075915-cb9dd7f3-cd49-41f3-98bb-b6d49ea7f7c2"
+        ],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "reservedPayloadBytes": 103270
+      },
+      "rssBytes": 120651776
+    }
+  ],
+  "writes": 538,
+  "peakPayloadBytes": 121002,
+  "peakRssBytes": 128712704,
+  "restoredSnapshots": 36,
+  "restoredFiles": 1833,
+  "elapsedMs": 63859.760917,
+  "cpu": {
+    "user": 10093759,
+    "system": 10306492
+  },
+  "limits": [
+    "Single local fixture run, not a long-duration reliability guarantee.",
+    "Payload counts objects, manifests and temporary payload files; excludes metadata and filesystem allocation overhead.",
+    "CPU/RSS include harness and writer; memory samples do not prove absence of leaks.",
+    "Graceful stop/restart each cycle; separate tests inject SIGKILL at storage and retention boundaries."
+  ],
+  "runDate": "2026-09-05",
+  "command": "node tools/recovery/soak.mjs 60"
+}

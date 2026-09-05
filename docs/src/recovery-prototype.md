@@ -10,6 +10,9 @@ From a source checkout with Node.js 22 or later:
 # PROJECT must exist; STORE's parent must exist. Use separate directories.
 node tools/recovery/cli.mjs watch /tmp/example-project /tmp/example-recovery
 
+# Optional persisted policy: payload budget in bytes, retained recovery points.
+node tools/recovery/cli.mjs watch /tmp/example-project /tmp/example-recovery --max-bytes 536870912 --keep 200
+
 # In another terminal: inspect status and select a snapshot's ID.
 cat /tmp/example-recovery/status.json
 ls /tmp/example-recovery/snapshots
@@ -38,7 +41,21 @@ No AI, Git commits, or conversation parsing participates in capture. No commands
 
 The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. There is no independent health supervisor yet. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
 
-The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, encrypt snapshots, limit total storage, or prune history. Included configuration files are copied as bytes, so use disposable fixtures. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
+The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, or encrypt snapshots. Included configuration files are copied as bytes, so use disposable fixtures. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
+
+## Storage budget and retention
+
+New stores default to a 512 MiB payload budget and 200 retained recovery points. `--max-bytes` (at least 1,024) and `--keep` (at least 2) override these settings and persist them in `project.json`. Later starts reuse the saved settings. An older store without a retention policy refuses to start until at least one setting is supplied explicitly; the other uses its default. Reading or restoring an older store does not require migration. Enabling retention on an existing store can expire history at startup.
+
+Retention always protects the earliest available baseline and newest point. It removes other points oldest first when above the count limit or when retained payload exceeds an 80% headroom target. New snapshot ordering values increase monotonically, including across restart, so a backward wall-clock change does not reverse retention order. These protected points are not certified working versions. There is not yet a command to pin additional known-good points. **Captured history can expire; this is not indefinite preservation.** A busy session can consume 200 points quickly. Count retention and a byte budget are prototype defaults to evaluate, not a recommended lifetime for valuable project history.
+
+The byte budget counts file objects, manifests, and temporary payload files at their logical byte sizes. New payload is reserved before writing, including temporary writes, so an oversized new capture fails instead of overrunning the budget. Metadata files, directory entries, filesystem allocation overhead, and restored copies are outside this budget. It is not a hard quota on the entire recovery directory. Lowering a limit below already-protected data does not delete that data to satisfy the limit; startup/capture fails until enough budget is supplied.
+
+Maintenance runs between outer scans: at startup, when the count exceeds its limit, after a budget failure, or after 30 seconds. It never reclaims objects staged by an in-progress cooperative scan. The count can transiently exceed its target until the outer scan completes; byte reservations still apply. Maintenance reads every published manifest, validates referenced object presence, and verifies retained object hashes before deleting history. Unexpected files, malformed manifests, missing references, or detected retained-object corruption stop pruning. Expired manifests are removed and the directory synced before unreferenced objects are removed, so a process crash during pruning does not deliberately strand retained references.
+
+When a new payload cannot fit, status becomes `storage-full`, retains failure details, and records a retry time. Automatic retries back off for 30 seconds; a manual capture can retry sooner. Startup exits if it cannot establish a baseline. Status includes policy, reserved payload bytes, snapshot count, and the last maintenance result; protected IDs and removed counts describe that maintenance pass. An unchanged capture may succeed without needing space for a new snapshot. Errors are not proof of every missed write, and a physically full disk can also prevent status updates.
+
+Pause the recorder before restoring an older expirable point: retention can otherwise remove it during the read. The first and newest points are protected during each maintenance pass, but an older selected point is not leased for an active restore. User-selected pins and coordinated restoration remain prerequisites for a comfortable real-project trial. This prototype still installs no service.
 
 Only one writer on one host may use a store. Dead-process locks can be reclaimed at startup; an ambiguous/live PID fails closed. A crash during lock acquisition can leave `acquiring-writer`, requiring manual inspection before removal. This is not a distributed lock. Concurrent hostile filesystem changes and power-loss durability have not been validated. Remote machines need their own coverage; the prototype does not observe remote writes.
 
@@ -49,6 +66,9 @@ Filesystem notification behavior varies by platform and filesystem; see the [Nod
 ```bash
 npm test -- tests/recovery
 node tools/recovery/measure.mjs
+node tools/recovery/soak.mjs 60
+# Optional longer memory diagnostic; forced GC is not normal recorder behavior.
+node --expose-gc tools/recovery/soak.mjs 180
 ```
 
 The recovery suite covers byte-for-byte restoration after shell writes, binary contents, renames and deletions; real watcher notifications; reconciliation with notifications disabled; SIGKILL and restart; scan failure; exclusions; and refusal of overwrite, path traversal, concurrent writers, and corrupt objects. It uses temporary projects and stores. A sandbox that disallows filesystem watching cannot pass the real-notification test; do not interpret that as verified notification support.
@@ -137,6 +157,23 @@ Coverage and delay improved materially in the larger paced run. The smaller run 
 
 ## Next decision
 
-Set and test storage budgets, retention, and observable degraded states before installing an automatic service. Compression does not bound history growth. Baseline sync cost, individual slow file operations, failures during concurrent writes, and long-running resource behavior still need attention. Preserve independent recovery and the crash tests while addressing those limits; do not turn these measurements into a promise of complete capture.
+Retention checks cover baseline/newest protection, shared objects, budget exhaustion and recovery, explicitly lowered limits, old-store migration, corrupt manifests, and clock rollback. Two additional SIGKILL cases interrupt pruning after manifest deletion has been synced and after object deletion has been synced. Every remaining point restores before restart; the protected baseline also restores after restart. These complement the twenty capture-boundary crash cases and do not substitute for power-loss tests.
+
+Two short sustained runs on 2026-09-05 used 50 initial 1 KiB files, repeated atomic replacements, a 256 KiB payload limit, and a 12-point retention target. Both ran three graceful stop/restart cycles, restoring all retained points after each cycle and comparing restored bytes with the fixture's known writes. Raw results are in `tools/recovery/results/2026-09-05-retention-60s.json` and `2026-09-05-retention-180s.json`.
+
+| Observation | 60-second workload | 180-second workload |
+|-------------|--------------------|---------------------|
+| Completed writes | 538 | 1,661 |
+| Snapshot restoration checks | 36 | 36 |
+| File restoration checks | 1,833 | 1,833 |
+| Retained points after each cycle | 12 | 12 |
+| Peak sampled payload | 121,002 bytes | 116,568 bytes |
+| Final payload | 103,270 bytes | 103,280 bytes |
+| Persisted capture failures | 11 | 9 |
+| Peak sampled process RSS | 128.7 MB | 150.6 MB |
+
+Repeated baselines count as separate restoration checks, not distinct snapshots. Samples can miss short-lived peaks; write reservations are the budget enforcement mechanism. In the one-minute run, RSS increased across cycles. The three-minute run used `--expose-gc` to diagnose this: live heap after each forced collection was approximately 5.5, 5.7, and 5.8 MB. That does not demonstrate an unbounded live-heap buildup in this fixture, but neither run establishes leak freedom or long-duration reliability. Forced collection is not part of ordinary recorder operation. CPU and memory measurements include the harness and its writer, and capture failures remain visible even after later success.
+
+Storage budgets, count retention, and a visible `storage-full` state are implemented in the prototype. Before a real-project trial, add user-selected protected points and coordinate restoration with expiration. Broaden sustained-operation testing beyond the short local fixtures, including physical storage failures. Baseline sync cost and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
 
 Automatic service lifecycle and independent health reporting follow those checks. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The prototype remains developer-only.

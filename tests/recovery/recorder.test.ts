@@ -225,7 +225,7 @@ describe('experimental recovery recorder', () => {
     await fs.writeFile(join(project, 'code.ts'), 'lost while offline');
     await fs.writeFile(join(project, 'code.ts'), 'current after crash');
     // A torn, unpublished temporary manifest must not become a recovery point.
-    await fs.writeFile(join(store, 'snapshots', 'unfinished.tmp'), '{');
+    await fs.writeFile(join(store, 'snapshots', `${baseline.id}.json.00000000-0000-0000-0000-000000000000.tmp`), '{');
     const recorder = await start(project, store);
     expect(recorder.status.interruption.previousState).toBe('observing');
     expect(await snapshots(store)).toHaveLength(2);

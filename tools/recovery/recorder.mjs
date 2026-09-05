@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
+import { RecoveryStorage, policy } from './storage.mjs';
 
 const compress = promisify(gzip);
 const decompress = promisify(gunzip);
@@ -49,12 +50,14 @@ async function atomic(path, data, checkpoint) {
 }
 
 export class Recorder {
-  constructor(project, store, { intervalMs = 1000, notifications = true, storageCheckpoint } = {}) {
+  constructor(project, store, { intervalMs = 1000, notifications = true, storageCheckpoint, maxBytes, maxSnapshots } = {}) {
     if (!Number.isInteger(intervalMs) || intervalMs < 20) throw new Error('intervalMs must be an integer >= 20');
     this.project = resolve(project);
     this.store = resolve(store);
     this.intervalMs = intervalMs;
     this.notifications = notifications;
+    this.requestedPolicy = Object.fromEntries(Object.entries({ maxBytes, maxSnapshots }).filter(([, value]) => value !== undefined));
+    policy(this.requestedPolicy);
     // Test instrumentation only; no CLI flag, environment trigger, or AI hook.
     this.storageCheckpoint = storageCheckpoint;
     this.queue = Promise.resolve();
@@ -96,9 +99,12 @@ export class Recorder {
       try { config = JSON.parse(await fs.readFile(configPath, 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (config && (config.version !== 1 || config.project !== this.project)) throw new Error('Store belongs to a different project or format');
-      if (!config) await atomic(configPath, JSON.stringify({ version: 1, project: this.project }));
+      if (config && !config.retention && !Object.keys(this.requestedPolicy).length) throw new Error('Existing unbounded store requires explicit maxBytes or maxSnapshots before retention is enabled');
+      const retention = policy({ ...config?.retention, ...this.requestedPolicy });
+      await atomic(configPath, JSON.stringify({ version: 1, project: this.project, retention }));
       await fs.mkdir(join(this.store, 'objects'), { recursive: true });
       await fs.mkdir(join(this.store, 'snapshots'), { recursive: true });
+      this.storage = new RecoveryStorage(this.store, retention, readSnapshot, this.storageCheckpoint);
       let previous;
       try { previous = JSON.parse(await fs.readFile(join(this.store, 'status.json'), 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -147,6 +153,7 @@ export class Recorder {
 
   drain() {
     if (!this.ready || this.stopping || this.scheduled || (!this.fullScanPending && !this.dirty.size)) return;
+    if (Date.now() < (this.retryAfter ?? 0)) return;
     this.scheduled = true;
     const pending = this.queue.then(() => {
       const paths = this.fullScanPending ? undefined : [...this.dirty];
@@ -171,6 +178,8 @@ export class Recorder {
   }
 
   async scan(reason, paths) {
+    this.scanDepth = (this.scanDepth ?? 0) + 1;
+    const outer = this.scanDepth === 1;
     const began = performance.now();
     const startedAt = new Date().toISOString();
     const entries = [];
@@ -178,6 +187,7 @@ export class Recorder {
     let bytesRead = 0;
     let newObjectBytes = 0;
     try {
+      if (outer) await this.storage.maintain();
       const targeted = paths && this.inventory;
       const refreshed = new Set();
       let lastYield = performance.now();
@@ -236,6 +246,7 @@ export class Recorder {
             if (hash(await fs.readFile(object)) !== digest) throw new Error(`Corrupt recovery object: ${digest}`);
           } catch (error) {
             if (error.code !== 'ENOENT') throw error;
+            this.storage.reserve(data.length);
             await atomic(object, data, this.storageCheckpoint);
             newObjectBytes += data.length;
           }
@@ -281,27 +292,38 @@ export class Recorder {
       const fingerprint = hash(JSON.stringify({ entries, skipped }));
       let snapshot = null;
       if (fingerprint !== this.fingerprint) {
-        const id = `${Date.now()}-${randomUUID()}`;
+        const id = `${this.storage.nextTimestamp()}-${randomUUID()}`;
         snapshot = { version: 1, id, project: this.project, startedAt, finishedAt: new Date().toISOString(), reason, scope: targeted ? 'changed-paths' : 'full-tree', atomic: false, entries, skipped };
         const inventoryBytes = Buffer.from(JSON.stringify({ entries, skipped }));
         if (inventoryBytes.length > 64 * 1024 * 1024) throw new Error('Inventory exceeds the 64 MiB manifest limit');
         const inventory = (await compress(inventoryBytes)).toString('base64');
-        await atomic(join(this.store, 'snapshots', `${id}.json`), JSON.stringify({ ...snapshot, entries: undefined, skipped: undefined, inventoryEncoding: 'gzip-base64', inventory }), this.storageCheckpoint);
+        const encoded = JSON.stringify({ ...snapshot, entries: undefined, skipped: undefined, inventoryEncoding: 'gzip-base64', inventory });
+        this.storage.reserve(Buffer.byteLength(encoded));
+        await atomic(join(this.store, 'snapshots', `${id}.json`), encoded, this.storageCheckpoint);
+        this.storage.count++;
         this.status.lastSnapshot = id;
         this.fingerprint = fingerprint;
       }
       this.inventory = { entries, skipped };
+      if (outer) await this.storage.maintain();
+      this.retryAfter = 0;
+      this.status.retryAfter = null;
       this.status = { ...this.status, state: skipped.length || this.status.watcher === 'failed' ? 'limited' : 'observing', lastSuccessfulScan: new Date().toISOString(), lastFullScan: targeted ? this.status.lastFullScan : new Date().toISOString(), lastError: null, skipped, metrics: { scope: targeted ? 'changed-paths' : 'full-tree', durationMs: performance.now() - began, bytesRead, newObjectBytes, files: entries.length } };
+      this.status.storage = this.storage.status();
       await atomic(join(this.store, 'status.json'), JSON.stringify(this.status));
       return snapshot;
     } catch (error) {
-      this.status.state = 'error';
+      const full = error.code === 'RECOVERY_STORAGE_FULL';
+      this.status.state = full ? 'storage-full' : 'error';
+      if (full) this.retryAfter = Date.now() + 30000;
+      this.status.retryAfter = full ? new Date(this.retryAfter).toISOString() : null;
+      this.status.storage = this.storage?.status();
       this.status.lastError = { at: new Date().toISOString(), message: message(error) };
       this.status.failedScanCount++;
       this.status.recentFailures = [...this.status.recentFailures, this.status.lastError].slice(-10);
       await atomic(join(this.store, 'status.json'), JSON.stringify(this.status)).catch(() => {});
       throw error;
-    }
+    } finally { this.scanDepth--; }
   }
 
   async stop() {

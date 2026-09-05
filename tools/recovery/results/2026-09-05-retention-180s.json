@@ -1,0 +1,127 @@
+{
+  "seconds": 180,
+  "options": {
+    "maxBytes": 262144,
+    "maxSnapshots": 12,
+    "intervalMs": 250
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "retained": 12,
+      "failures": 2,
+      "storage": {
+        "at": "2026-09-05T11:08:34.919Z",
+        "payloadBytes": 103280,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1788606454916-e261248b-5eb6-4baf-9c06-890335ec86b5",
+          "1788606514873-1cb5e28e-8d72-474a-bb51-ee38f2e86691"
+        ],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "reservedPayloadBytes": 103280
+      },
+      "memoryBeforeGc": {
+        "rss": 136380416,
+        "heapTotal": 63586304,
+        "heapUsed": 26526304,
+        "external": 14223226,
+        "arrayBuffers": 11858226
+      },
+      "memoryAfterGc": {
+        "rss": 136413184,
+        "heapTotal": 62013440,
+        "heapUsed": 5505352,
+        "external": 14223226,
+        "arrayBuffers": 8984489
+      }
+    },
+    {
+      "cycle": 1,
+      "retained": 12,
+      "failures": 5,
+      "storage": {
+        "at": "2026-09-05T11:09:35.911Z",
+        "payloadBytes": 103272,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1788606454916-e261248b-5eb6-4baf-9c06-890335ec86b5",
+          "1788606575877-4fc73a61-fccd-4dc7-b340-5e030435deb3"
+        ],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "reservedPayloadBytes": 103272
+      },
+      "memoryBeforeGc": {
+        "rss": 128352256,
+        "heapTotal": 64110592,
+        "heapUsed": 29307880,
+        "external": 6223620,
+        "arrayBuffers": 3858620
+      },
+      "memoryAfterGc": {
+        "rss": 128647168,
+        "heapTotal": 62275584,
+        "heapUsed": 5696344,
+        "external": 6223620,
+        "arrayBuffers": 2714596
+      }
+    },
+    {
+      "cycle": 2,
+      "retained": 12,
+      "failures": 9,
+      "storage": {
+        "at": "2026-09-05T11:10:37.045Z",
+        "payloadBytes": 103280,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1788606454916-e261248b-5eb6-4baf-9c06-890335ec86b5",
+          "1788606637010-5719f108-4bb3-4a6d-9f8e-c0569553c575"
+        ],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "reservedPayloadBytes": 103280
+      },
+      "memoryBeforeGc": {
+        "rss": 143196160,
+        "heapTotal": 64372736,
+        "heapUsed": 7953992,
+        "external": 3523370,
+        "arrayBuffers": 1158370
+      },
+      "memoryAfterGc": {
+        "rss": 143081472,
+        "heapTotal": 62275584,
+        "heapUsed": 5801304,
+        "external": 3523370,
+        "arrayBuffers": 614978
+      }
+    }
+  ],
+  "writes": 1661,
+  "peakPayloadBytes": 116568,
+  "peakRssBytes": 150634496,
+  "restoredSnapshots": 36,
+  "restoredFiles": 1833,
+  "elapsedMs": 183604.6875,
+  "cpu": {
+    "user": 27446274,
+    "system": 28744770
+  },
+  "limits": [
+    "Single local fixture run, not a long-duration reliability guarantee.",
+    "Payload counts objects, manifests and temporary payload files; excludes metadata and filesystem allocation overhead.",
+    "CPU/RSS include harness and writer; memory samples do not prove absence of leaks. With --expose-gc, forced GC after each cycle is diagnostic only.",
+    "Graceful stop/restart each cycle; separate tests inject SIGKILL at storage and retention boundaries."
+  ],
+  "runDate": "2026-09-05",
+  "command": "node --expose-gc tools/recovery/soak.mjs 180"
+}
