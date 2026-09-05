@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ### Added
 
+- Recovery prototype reconciliation now services pending changed paths between reads and preserves their newer observations. Independent compressed inventories reduce per-manifest storage; the reader accepts earlier plain manifests. Tests cover interleaved rewrite/deletion, compression corruption, and existing crash boundaries; measured tradeoffs are documented.
 - Recovery prototype changed-path capture with bounded pending notifications, full reconciliation fallback, explicit observation scope, and separate full-scan timestamps. Expanded crash tests cover both capture paths; workload comparisons document improved paced-write coverage and remaining burst/storage limits.
 - Recovery prototype stress harness and ten storage-boundary SIGKILL tests, with recorded 1,000/5,000-file measurements. Successful recovery does not hide prior persisted scan failures: status retains a count and the last ten failures across restart.
 - Developer-only recovery recorder prototype with independent file observation, content-addressed recovery points, restoration to a new directory, and disposable recovery/failure tests. No background service is installed or enabled; intermediate versions can be missed.

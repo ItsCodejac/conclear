@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { Recorder, restore } from './recorder.mjs';
+import { Recorder, restore, readSnapshot } from './recorder.mjs';
 
 const exec = promisify(execFile);
 const fileCount = Number(process.argv[2] ?? 1000);
@@ -87,7 +87,7 @@ try {
       await settle(async () => {
         while (examined < checkpoints.length) {
           const point = checkpoints[examined++];
-          const manifest = JSON.parse(await fs.readFile(point.path, 'utf8'));
+          const manifest = await readSnapshot(point.path);
           for (const entry of manifest.entries) {
             const key = `${entry.path}:${entry.hash}`;
             if (!observed.has(key)) observed.set(key, point.publishedAt);

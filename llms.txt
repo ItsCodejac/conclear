@@ -2315,9 +2315,11 @@ The watch command stays in the foreground. Stop it with Ctrl-C. Nothing is autom
 
 ## What the experiment preserves
 
-An initial scan records regular files, including uncommitted files. Recursive filesystem notifications identify paths to refresh. Changed-file batches read those files or directory subtrees and retain the rest of the last successful inventory. Notifications arriving during a batch remain in a pending set for the next batch. A one-second reconciliation timer requests a full scan even without notifications; missing or unsafe notification paths also request full scans. The pending set is capped at 10,000 paths, falling back to reconciliation on overflow. Scans and batches are serialized. Each reuses SHA-256-addressed objects and writes a complete manifest when the observed inventory changes. A restart creates a fresh baseline in the same project-bound store.
+An initial scan records regular files, including uncommitted files. Recursive filesystem notifications identify paths to refresh. Changed-file batches read those files or directory subtrees and retain the rest of the last successful inventory. Notifications arriving during a batch remain in a pending set for the next batch. A one-second reconciliation timer requests a full scan even without notifications; missing or unsafe notification paths also request full scans. The pending set is capped at 10,000 paths, falling back to reconciliation on overflow. Inventory publication remains serialized, but a full walk can service one pending changed-path batch between file reads once at least 20 ms has elapsed. The full walk then preserves the newer observations from those batches instead of publishing its older reads for those paths. A restart creates a fresh baseline in the same project-bound store.
 
-Manifests identify their observation scope as `changed-paths` or `full-tree`. A changed-path recovery point combines newly observed files with previously observed inventory; it does not certify the current contents of unchanged paths. Status distinguishes `lastFullScan` from `lastSuccessfulScan`, which also advances after successful changed-path batches. Full reconciliation remains necessary for missing notifications and out-of-date inventory. A full scan can still delay changed-file capture while it runs.
+Manifests identify their observation scope as `changed-paths` or `full-tree`. A changed-path recovery point combines newly observed files with previously observed inventory; it does not certify the current contents of unchanged paths. A full-tree point can incorporate the newer changed-path observations made during its walk. Status distinguishes `lastFullScan` from `lastSuccessfulScan`, which also advances after successful changed-path batches. Full reconciliation remains necessary for missing notifications and out-of-date inventory. The 20 ms check is not a latency guarantee: an individual file read, object sync, compression, or publication can take longer. Initial baseline capture does not yet yield to changed-path batches.
+
+Each manifest stores its complete inventory as a gzip-compressed, base64-encoded field in the JSON envelope (`inventoryEncoding: "gzip-base64"`). It needs no previous manifest or delta chain to restore. `readSnapshot()` in the prototype expands inventories and also accepts earlier plain `entries`/`skipped` manifests. Consumers that inspect prototype manifests directly must use that reader for new snapshots. Expanded inventory is limited to 64 MiB on both write and decompression; larger new inventories fail explicitly. File objects remain uncompressed and content-addressed.
 
 Objects and manifests use temporary files, file sync, rename, and directory sync. An unpublished temporary manifest is not a recovery point. Restore checks object hashes, rejects unsafe paths, and requires a new destination. Renames and deletions appear as different path inventories; earlier bytes remain in older recovery points. The prototype preserves file bytes and basic permission bits, not empty directories, ownership, timestamps, extended attributes, or symlink targets.
 
@@ -2329,7 +2331,7 @@ No AI, Git commits, or conversation parsing participates in capture. No commands
 
 The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. There is no independent health supervisor yet. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
 
-The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, encrypt snapshots, limit total storage, or prune history. Included configuration files are copied as bytes, so use disposable fixtures. Full reconciliation still reads the whole included tree, and every manifest still lists the full inventory; large-project costs remain under investigation.
+The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, encrypt snapshots, limit total storage, or prune history. Included configuration files are copied as bytes, so use disposable fixtures. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
 
 Only one writer on one host may use a store. Dead-process locks can be reclaimed at startup; an ambiguous/live PID fails closed. A crash during lock acquisition can leave `acquiring-writer`, requiring manual inspection before removal. This is not a distributed lock. Concurrent hostile filesystem changes and power-loss durability have not been validated. Remote machines need their own coverage; the prototype does not observe remote writes.
 
@@ -2394,7 +2396,7 @@ CPU includes recorder and harness work but excludes writer child processes. RSS 
 
 Concurrent modifications caused scan failures rather than publication of those failed scans. The 5,000-file bulk rename/delete phase produced ten failed scans; all ten remained in persisted status after successful recovery. Original and final recovery matched in both workloads, while most intermediate versions were missed. Full manifests also grow in proportion to project size even when only a few files change.
 
-## Next decision
+## Changed-path comparison
 
 The changed-path implementation has now been compared with the same harness. Single reruns produced the following results; raw reports have the suffix `-changed-paths.json`:
 
@@ -2406,9 +2408,29 @@ The changed-path implementation has now been compared with the same harness. Sin
 | Paced phase CPU time, user + system | 1.41 → 0.47 s | 1.00 → 1.63 s |
 | Final manifest storage | 1.49 → 7.09 MB | 2.47 → 8.06 MB |
 
-All original and settled final files again restored exactly in both sizes. Coverage improved in the paced workload, but the rapid burst still lost all intermediate versions. Captured-version delay and CPU did not improve uniformly: full reconciliation still blocks the serialized capture queue, particularly in the larger project. More preserved versions also produce more full manifests. These comparisons are single runs with scheduling variability, not stable speedup factors.
+All original and settled final files again restored exactly in both sizes. Coverage improved in the paced workload, but the rapid burst still lost all intermediate versions. In that implementation, captured-version delay and CPU did not improve uniformly: full reconciliation still blocked the serialized capture queue, particularly in the larger project. More preserved versions also produced more full manifests. These comparisons are single runs with scheduling variability, not stable speedup factors.
 
-Before installing a background service, investigate how to let changed-file capture progress during reconciliation without publishing stale inventories, and reduce manifest growth without weakening independent recovery or crash behavior. Baseline sync cost also remains. Repeat the same workload and crash tests after each change, then choose storage limits, retention, and scan intervals from the evidence.
+## Cooperative reconciliation and compression comparison
+
+The next implementation services pending changes between full-walk file reads and compresses each independent inventory. The same two workloads were rerun; reports use the suffix `-cooperative.json`.
+
+| Measurement | 1,000 files: changed-path → cooperative | 5,000 files: changed-path → cooperative |
+|-------------|----------------------------------------|----------------------------------------|
+| Paced versions captured, out of 160 | 65 → 68 | 20 → 55 |
+| Burst versions captured, out of 400 | 2 → 2 | 2 → 3 |
+| Paced captured-version delay, p95 | 46 → 54 ms | 1,370 → 63 ms |
+| Paced phase CPU time, user + system | 0.47 → 0.68 s | 1.63 → 1.14 s |
+| Baseline manifest bytes | 124,339 → 57,923 | 620,339 → 287,119 |
+| Total manifest storage | 7.09 → 3.87 MB | 8.06 → 12.62 MB |
+| Total manifests | 57 → 67 | 13 → 44 |
+
+Original and settled final restorations again matched exactly at both sizes. Tests also force a rewrite or deletion after an early full-walk read and verify that reconciliation preserves the newer changed-path observation. Compressed and legacy plain manifests restore, corrupt compressed inventories are rejected, and the twenty storage-boundary crash cases still pass with compression enabled.
+
+Coverage and delay improved materially in the larger paced run. The smaller run showed little coverage difference and higher CPU time. Compression reduced baseline inventory size by approximately 54%, but the larger run's total storage increased because it retained more recovery points. Almost all burst versions remain absent. These are single-run comparisons; they do not establish a general capture percentage or a guaranteed latency. Outer full-walk durations include serviced batches, so their durations must not be summed as independent work.
+
+## Next decision
+
+Set and test storage budgets, retention, and observable degraded states before installing an automatic service. Compression does not bound history growth. Baseline sync cost, individual slow file operations, failures during concurrent writes, and long-running resource behavior still need attention. Preserve independent recovery and the crash tests while addressing those limits; do not turn these measurements into a promise of complete capture.
 
 Automatic service lifecycle and independent health reporting follow those checks. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The prototype remains developer-only.
 

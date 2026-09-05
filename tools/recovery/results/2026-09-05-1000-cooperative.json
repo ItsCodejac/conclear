@@ -1,0 +1,190 @@
+{
+  "environment": {
+    "node": "v26.4.0",
+    "platform": "darwin",
+    "release": "24.6.0"
+  },
+  "fileCount": 1000,
+  "fileBytes": 16384,
+  "phases": [
+    {
+      "name": "paced-concurrent-writes",
+      "rounds": 80,
+      "delay": 20,
+      "completedWrites": 160,
+      "capturedVersions": 68,
+      "missedVersions": 92,
+      "perWriter": [
+        {
+          "file": "paced-concurrent-writes-inplace.ts",
+          "completed": 80,
+          "captured": 33
+        },
+        {
+          "file": "paced-concurrent-writes-rename.ts",
+          "completed": 80,
+          "captured": 35
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 32,
+        "p95": 54,
+        "max": 69
+      },
+      "elapsedMs": 2057.020542,
+      "cpu": {
+        "user": 390836,
+        "system": 285165
+      },
+      "successfulScans": 53,
+      "failedScans": 1,
+      "scanP95Ms": 37.32737499999894,
+      "beforeStorage": {
+        "objects": {
+          "files": 1000,
+          "bytes": 16384000
+        },
+        "snapshots": {
+          "files": 1,
+          "bytes": 57923
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 1071,
+          "bytes": 17547264
+        },
+        "snapshots": {
+          "files": 37,
+          "bytes": 2149767
+        }
+      }
+    },
+    {
+      "name": "burst-concurrent-writes",
+      "rounds": 200,
+      "delay": 0,
+      "completedWrites": 400,
+      "capturedVersions": 2,
+      "missedVersions": 398,
+      "perWriter": [
+        {
+          "file": "burst-concurrent-writes-inplace.ts",
+          "completed": 200,
+          "captured": 1
+        },
+        {
+          "file": "burst-concurrent-writes-rename.ts",
+          "completed": 200,
+          "captured": 1
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 35,
+        "p95": 1013,
+        "max": 1013
+      },
+      "elapsedMs": 1192.8510829999996,
+      "cpu": {
+        "user": 232625,
+        "system": 201339
+      },
+      "successfulScans": 4,
+      "failedScans": 4,
+      "scanP95Ms": 380.3436249999995,
+      "beforeStorage": {
+        "objects": {
+          "files": 1071,
+          "bytes": 17547264
+        },
+        "snapshots": {
+          "files": 37,
+          "bytes": 2149767
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 1075,
+          "bytes": 17612800
+        },
+        "snapshots": {
+          "files": 39,
+          "bytes": 2266263
+        }
+      }
+    }
+  ],
+  "baseline": {
+    "elapsedMs": 8824.34,
+    "cpu": {
+      "user": 590680,
+      "system": 807735
+    },
+    "metrics": {
+      "scope": "full-tree",
+      "durationMs": 8800.739042000001,
+      "bytesRead": 16384000,
+      "newObjectBytes": 16384000,
+      "files": 1000
+    }
+  },
+  "restoration": {
+    "baselineFilesVerified": 1000,
+    "finalFilesVerified": 904,
+    "exactMatch": true
+  },
+  "storage": {
+    "objects": {
+      "files": 1075,
+      "bytes": 17612800
+    },
+    "snapshots": {
+      "files": 67,
+      "bytes": 3872387
+    }
+  },
+  "peakSampledRssBytes": 106758144,
+  "scanFailures": [
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 18.40833300000122,
+      "error": "File changed during read: paced-concurrent-writes-rename.ts"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 11.288791000000856,
+      "error": "File changed during read: burst-concurrent-writes-inplace.ts"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 8.156208000000333,
+      "error": "File changed during read: burst-concurrent-writes-rename.ts"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 29.25762500000019,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/burst-concurrent-writes-rename.ts.pending'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 19.254541999998764,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/burst-concurrent-writes-rename.ts.pending'"
+    }
+  ],
+  "persistedFailureCount": 5,
+  "limits": [
+    "Synthetic local workload; one run, not a real-world miss rate.",
+    "CPU measures this harness and recorder, excluding writer children; microseconds.",
+    "Capture delay covers captured versions only, from write completion to manifest publication; negative scheduling differences clamp to zero.",
+    "RSS includes harness; 25ms sampling may miss peaks. Process crashes are not power-loss tests.",
+    "Outer full-walk durations include nested changed-path batches; do not sum scan times as independent work."
+  ],
+  "runDate": "2026-09-05",
+  "implementation": "cooperative reconciliation and independent compressed inventories",
+  "command": "node tools/recovery/stress.mjs 1000 16384"
+}

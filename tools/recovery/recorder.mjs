@@ -4,6 +4,26 @@ import * as fs from 'node:fs/promises';
 import { resolve, join, relative, dirname, isAbsolute, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import { gzip, gunzip } from 'node:zlib';
+import { promisify } from 'node:util';
+
+const compress = promisify(gzip);
+const decompress = promisify(gunzip);
+
+// Each manifest remains independently restorable; compression introduces no
+// dependency on a previous snapshot or a delta chain.
+export async function readSnapshot(path) {
+  const snapshot = JSON.parse(await fs.readFile(path, 'utf8'));
+  if (snapshot.inventoryEncoding !== undefined) {
+    if (snapshot.inventoryEncoding !== 'gzip-base64' || snapshot.entries !== undefined || snapshot.skipped !== undefined) throw new Error('Invalid inventory encoding');
+    const inventory = JSON.parse((await decompress(Buffer.from(snapshot.inventory, 'base64'), { maxOutputLength: 64 * 1024 * 1024 })).toString('utf8'));
+    snapshot.entries = inventory.entries;
+    snapshot.skipped = inventory.skipped;
+    delete snapshot.inventory;
+    delete snapshot.inventoryEncoding;
+  }
+  return snapshot;
+}
 
 const hash = data => createHash('sha256').update(data).digest('hex');
 const inside = (parent, child) => child === parent || child.startsWith(parent + sep);
@@ -159,6 +179,23 @@ export class Recorder {
     let newObjectBytes = 0;
     try {
       const targeted = paths && this.inventory;
+      const refreshed = new Set();
+      let lastYield = performance.now();
+      const serviceChanges = async () => {
+        if (targeted || !this.ready || this.stopping || !this.dirty.size) return;
+        const pending = [...this.dirty];
+        this.dirty.clear();
+        // Run one batch cooperatively between file reads. No simultaneous
+        // inventory publication, and no waiting for the whole walk to finish.
+        const previousInventory = this.inventory;
+        try {
+          await this.scan('notification', pending);
+        } catch { /* Failure history is retained; full reconciliation continues. */ }
+        // A batch may publish successfully and then fail writing status. Its
+        // committed inventory must still win over this walk's earlier reads.
+        if (this.inventory !== previousInventory) for (const path of pending) refreshed.add(path);
+        lastYield = performance.now();
+      };
       const changedRoots = targeted ? [...new Set(paths)].sort().filter((path, i, all) => !all.slice(0, i).some(parent => path.startsWith(parent + sep))) : null;
       if (targeted) {
         const retained = path => !changedRoots.some(root => path === root || path.startsWith(root + sep));
@@ -169,6 +206,7 @@ export class Recorder {
         const names = (await fs.readdir(directory)).sort();
         for (const name of names) {
           await visit(join(directory, name));
+          if (performance.now() - lastYield >= 20) await serviceChanges();
         }
       };
       const visit = async path => {
@@ -225,6 +263,19 @@ export class Recorder {
           }
         }
       } else await walk(this.project);
+      if (!targeted) {
+        await serviceChanges();
+        if (refreshed.size) {
+          const affected = path => [...refreshed].some(root => path === root || path.startsWith(root + sep));
+          // A file read early in this walk may have been captured again while
+          // yielding. Never overwrite that newer observation with the old read.
+          const latest = this.inventory;
+          const mergedEntries = entries.filter(entry => !affected(entry.path));
+          const mergedSkipped = skipped.filter(entry => !affected(entry.path));
+          entries.splice(0, entries.length, ...mergedEntries, ...latest.entries.filter(entry => affected(entry.path)));
+          skipped.splice(0, skipped.length, ...mergedSkipped, ...latest.skipped.filter(entry => affected(entry.path)));
+        }
+      }
       entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
       skipped.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
       const fingerprint = hash(JSON.stringify({ entries, skipped }));
@@ -232,7 +283,10 @@ export class Recorder {
       if (fingerprint !== this.fingerprint) {
         const id = `${Date.now()}-${randomUUID()}`;
         snapshot = { version: 1, id, project: this.project, startedAt, finishedAt: new Date().toISOString(), reason, scope: targeted ? 'changed-paths' : 'full-tree', atomic: false, entries, skipped };
-        await atomic(join(this.store, 'snapshots', `${id}.json`), JSON.stringify(snapshot), this.storageCheckpoint);
+        const inventoryBytes = Buffer.from(JSON.stringify({ entries, skipped }));
+        if (inventoryBytes.length > 64 * 1024 * 1024) throw new Error('Inventory exceeds the 64 MiB manifest limit');
+        const inventory = (await compress(inventoryBytes)).toString('base64');
+        await atomic(join(this.store, 'snapshots', `${id}.json`), JSON.stringify({ ...snapshot, entries: undefined, skipped: undefined, inventoryEncoding: 'gzip-base64', inventory }), this.storageCheckpoint);
         this.status.lastSnapshot = id;
         this.fingerprint = fingerprint;
       }
@@ -266,7 +320,7 @@ export class Recorder {
 export async function restore(store, id, destination) {
   if (!/^\d+-[a-f0-9-]+$/.test(id)) throw new Error('Invalid snapshot id');
   store = await fs.realpath(store);
-  const snapshot = JSON.parse(await fs.readFile(join(store, 'snapshots', `${id}.json`), 'utf8'));
+  const snapshot = await readSnapshot(join(store, 'snapshots', `${id}.json`));
   if (snapshot.version !== 1 || snapshot.id !== id || !Array.isArray(snapshot.entries)) throw new Error('Invalid snapshot');
   destination = join(await fs.realpath(dirname(resolve(destination))), resolve(destination).split(sep).at(-1));
   if (inside(store, destination) || inside(destination, store) || inside(snapshot.project, destination) || inside(destination, snapshot.project)) throw new Error('Restore destination must be separate from project and store');

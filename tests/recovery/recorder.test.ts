@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
-import { Recorder, restore } from '../../tools/recovery/recorder.mjs';
+import { Recorder, restore, readSnapshot } from '../../tools/recovery/recorder.mjs';
 
 const exec = promisify(execFile);
 const roots: string[] = [];
@@ -27,7 +27,7 @@ async function start(project: string, store: string, options = {}) {
 }
 async function snapshots(store: string) {
   const names = (await fs.readdir(join(store, 'snapshots'))).filter(name => name.endsWith('.json')).sort();
-  return Promise.all(names.map(async name => JSON.parse(await fs.readFile(join(store, 'snapshots', name), 'utf8'))));
+  return Promise.all(names.map(name => readSnapshot(join(store, 'snapshots', name))));
 }
 async function eventually(check: () => Promise<boolean>) {
   const deadline = Date.now() + 5000;
@@ -48,6 +48,58 @@ afterEach(async () => {
 });
 
 describe('experimental recovery recorder', () => {
+  it.each(['rewrite', 'delete'])('services a %s during reconciliation without rolling back newer observations', async operation => {
+    const { root, project, store } = await fixture();
+    await fs.writeFile(join(project, 'a.ts'), 'baseline-a');
+    await fs.writeFile(join(project, 'z.ts'), 'baseline-z');
+    const recorder = await start(project, store);
+    await fs.writeFile(join(project, 'a.ts'), 'earlier-read');
+    await fs.writeFile(join(project, 'z.ts'), 'unannounced-z');
+    let release: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let paused = false;
+    recorder.storageCheckpoint = async (phase, path) => {
+      if (!paused && phase === 'durable' && path.includes('/objects/')) {
+        paused = true;
+        await held;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    };
+    const full = recorder.capture('reconciliation');
+    try {
+      await eventually(async () => paused);
+      if (operation === 'rewrite') await fs.writeFile(join(project, 'a.ts'), 'newer-observation');
+      else await fs.unlink(join(project, 'a.ts'));
+      recorder.schedule('notification', 'a.ts');
+    } finally { release!(); }
+    const result = await full;
+    const points = await snapshots(store);
+    expect(points.some(s => s.scope === 'changed-paths')).toBe(true);
+    expect(result.scope).toBe('full-tree');
+    await restore(store, result.id, join(root, 'merged'));
+    if (operation === 'rewrite') expect(await fs.readFile(join(root, 'merged', 'a.ts'), 'utf8')).toBe('newer-observation');
+    else await expect(fs.stat(join(root, 'merged', 'a.ts'))).rejects.toThrow();
+    expect(await fs.readFile(join(root, 'merged', 'z.ts'), 'utf8')).toBe('unannounced-z');
+  });
+
+  it('compresses independent manifests and reads legacy uncompressed snapshots', async () => {
+    const { root, project, store } = await fixture();
+    for (let i = 0; i < 50; i++) await fs.writeFile(join(project, `file-${i}.ts`), 'same bytes');
+    const recorder = await start(project, store);
+    const id = recorder.status.lastSnapshot;
+    const path = join(store, 'snapshots', `${id}.json`);
+    const encoded = await fs.readFile(path, 'utf8');
+    expect(JSON.parse(encoded).inventoryEncoding).toBe('gzip-base64');
+    const expanded = await readSnapshot(path);
+    expect(encoded.length).toBeLessThan(JSON.stringify(expanded).length / 2);
+    await fs.writeFile(path, JSON.stringify(expanded));
+    await restore(store, id, join(root, 'legacy'));
+    expect(await fs.readdir(join(root, 'legacy'))).toHaveLength(50);
+    await fs.writeFile(path, JSON.stringify({ ...JSON.parse(encoded), inventory: 'corrupt' }));
+    await expect(restore(store, id, join(root, 'bad'))).rejects.toThrow();
+    await expect(fs.stat(join(root, 'bad'))).rejects.toThrow();
+  });
+
   it('reads only changed files while retaining the rest of the recovery inventory', async () => {
     const { root, project, store } = await fixture();
     await fs.writeFile(join(project, 'unchanged.ts'), 'keep');
