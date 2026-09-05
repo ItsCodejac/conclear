@@ -831,7 +831,7 @@ export async function getFileContent(apiPath: string, lineNumber: number): Promi
   return null;
 }
 
-export async function parseConversation(apiPath: string): Promise<ClineParsedConversation> {
+export async function parseConversation(apiPath: string, options: { fullText?: boolean } = {}): Promise<ClineParsedConversation> {
   const messages: ChatMessage[] = [];
   const timeline: TimelineEvent[] = [];
 
@@ -882,8 +882,8 @@ export async function parseConversation(apiPath: string): Promise<ClineParsedCon
         messages.push({
           id: uuid,
           role,
-          text: text.slice(0, 2000),
-          toolUse,
+          text: options.fullText ? text : text.slice(0, 2000),
+          toolUse: options.fullText ? undefined : toolUse,
           hasImage,
           imageId,
         });
@@ -950,7 +950,8 @@ export async function parseConversation(apiPath: string): Promise<ClineParsedCon
         }
       }
     }
-  } catch {
+  } catch (error) {
+    if (options.fullText) throw error;
     // parse error — return empty
   }
 

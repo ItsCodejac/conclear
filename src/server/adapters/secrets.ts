@@ -117,11 +117,16 @@ export function redactText(text: string, filter: RedactFilter | null): { text: s
   for (const pattern of SECRET_PATTERNS) {
     if (filter?.type && filter.type !== pattern.type) continue;
     pattern.regex.lastIndex = 0;
-    out = out.replace(pattern.regex, (match, _g, offset: number) => {
+    // replace() puts capture groups between the match and the offset, so the
+    // offset/whole-string args are only findable from the end of the list.
+    out = out.replace(pattern.regex, (...args) => {
+      const match = args[0] as string;
+      const whole = args[args.length - 1] as string;
+      const offset = args[args.length - 2] as number;
       if (pattern.nearbyKeyword) {
         const wStart = Math.max(0, offset - 200);
-        const wEnd = Math.min(out.length, offset + match.length + 200);
-        if (!pattern.nearbyKeyword.test(out.slice(wStart, wEnd))) return match;
+        const wEnd = Math.min(whole.length, offset + match.length + 200);
+        if (!pattern.nearbyKeyword.test(whole.slice(wStart, wEnd))) return match;
       }
       replaced++;
       return '****REDACTED****';

@@ -76,12 +76,17 @@ conclear search "auth middleware"          # full-text across every session
 conclear search "X" --project myapp        # scope to a project
 conclear files "api.ts" --latest           # find file versions touched in any session
 conclear summary <session>                 # session digest
-conclear context <session>                 # clean user+assistant conversation text
+conclear context <session> --json          # bounded conversation page + references
 conclear scan <session>                    # scan for leaked credentials
 conclear export <session>                  # markdown
 ```
 
-All commands take `--json` for structured output. Session lookup accepts ID prefix, exact name, or partial match.
+Search, sessions, files, summary, context, and scan take `--json` for structured output; export writes a Markdown or text document. Session lookup accepts ID prefix, exact name, or partial match.
+
+Search returns compact message references with coverage metadata. Open a hit with `conclear context <session> --tool <tool> --around <message-ref> --before 1 --after 3 --json`, then follow `page.nextCursor` using `--cursor` when more evidence is needed. Context defaults to the last 20 messages and a shared 12,000-character text budget; long messages continue without silently losing their tails. `page.complete` explicitly distinguishes a complete parsed conversation from a partial page.
+
+**Retrieval API change:** search JSON/MCP responses now use `{ matches, coverage }`; context uses `{ messages, page, ... }` instead of a bare array. See the [retrieval contract](docs/src/mcp-server.md#conclear_context) for navigation, limits, and reference validity.
+
 
 ## MCP server
 
@@ -92,7 +97,7 @@ All commands take `--json` for structured output. Session lookup accepts ID pref
 | `conclear_search` | Full-text search across every session |
 | `conclear_sessions` | List sessions, most recently active first |
 | `conclear_summary` | Session digest — files touched + key user messages |
-| `conclear_context` | Clean user / assistant conversation text |
+| `conclear_context` | Bounded conversation pages with references and completeness metadata |
 | `conclear_files` | List every file a session touched, with version counts |
 | `conclear_file_content` | Fetch a specific file version from a session |
 | `conclear_scan_secrets` | Scan a session for leaked API keys / tokens / .env dumps |
@@ -161,6 +166,8 @@ The Backups page lets you restore any prior version of any session file in one c
 
 ConClear runs entirely on your machine. There is no cloud, no telemetry, no account, no upload. Session data is read from local disk, displayed in a local web UI on `localhost:3789`, and mutated only in place (with backups). The MCP server runs locally and is spawned on demand by your AI client — there's no persistent process listening.
 
+The one network call ConClear makes is an update check: a version lookup for the `conclear` package against `registry.npmjs.org`, cached in `~/.conclear/update-check.json` for 24 hours. It sends nothing but the package name — no session data, no identifiers. Set `CONCLEAR_NO_UPDATE_CHECK=1` to disable it entirely (it's also skipped automatically when `CI` is set, and never runs on the MCP transport).
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -184,8 +191,10 @@ npm install
 npm run dev        # Vite + Express, hot reload
 npm run build      # production
 npm start          # run production build
-npm test           # 38 tests
+npm test           # run the test suite
 ```
+
+For documentation generation, retrieval migration notes, and release preparation, see [Development and releases](docs/src/development.md).
 
 ## Demo mode
 

@@ -11,7 +11,7 @@ These let ConClear read session data from multiple AI coding tools. Each tool ge
 
 ## The Adapter Interface
 
-Every adapter must implement the `Adapter` interface defined in `src/server/adapters/types.ts`:
+Every adapter must implement the required methods of `Adapter` in `src/server/adapters/types.ts`. Optional capabilities such as file history, scanning, redaction, export, and resizing are also defined there and inspected by `capabilitiesOf()`. Required methods:
 
 ```typescript
 interface Adapter {
@@ -19,6 +19,7 @@ interface Adapter {
   detect(): Promise<boolean>;
   listSessions(): Promise<Session[]>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<ParsedConversation>;
   getImageData(sessionId: string, imageId: string): Promise<ImageData>;
   stripImages(sessionId: string, imageIds: string[]): Promise<{ backupPath: string; bytesReclaimed: number }>;
   stripAllImages(sessionId: string): Promise<{ backupPath: string; bytesReclaimed: number }>;
@@ -59,13 +60,19 @@ To add support for a new AI coding tool:
 1. Create a new directory under `src/server/adapters/<tool-name>/`.
 2. Create `parser.ts` with format-specific parsing functions.
 3. Create `index.ts` with a class implementing the `Adapter` interface.
-4. Register the adapter in `src/server/routes/sessions.ts` by adding it to the `adapters` array.
+4. Register the adapter in `src/server/adapters/registry.ts` by adding it to `ADAPTERS`, shared by REST, CLI, and MCP.
 
 The router iterates through all adapters for each request. If an adapter's `detect()` returns `true`, it participates in the session listing and can handle session-specific requests.
 
+## Agent retrieval
+
+`getConversation(sessionId, { fullText: true })` is the search/context read path. Return complete narrative text, including text accompanying a tool call, without tool payloads or preview truncation. Report unreadable/corrupt sources as errors rather than returning an apparently complete empty conversation. The default call remains the web UI preview path.
+
+`src/server/context.ts` assigns references from tool/session scope, adapter message identity, and full text. Prefer native message IDs; positional fallback IDs can change if messages are inserted or removed. The module applies response budgets and creates revision-bound continuation cursors. `src/server/search.ts` searches the same messages so every returned reference can be opened in context.
+
 ## Caching
 
-Adapters use mtime-based caching. Each session file's modification time is tracked, and only files that have changed since the last scan are re-parsed. This makes repeated scans fast even with hundreds of sessions.
+Adapters use modification-time checks to cache session metadata. Full-text search and bounded context read conversations from their sources on each request; the metadata cache is not a persistent search index. Large archives can therefore require more disk work even when the returned context is small.
 
 ## Backup Strategy
 

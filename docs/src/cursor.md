@@ -22,7 +22,7 @@ Cursor stores conversation data in a SQLite database (`state.vscdb`) within its 
 - Session listing from database records
 - Image preview, strip, and restore
 - Conversation replay (including structured tool calls — `toolFormerData.name` + `rawArgs` + `result`)
-- SQLite-aware full-text search (`searchMessages`) via the cursor adapter's per-bubble query rather than the line-based default
+- Full-text search through the shared retrieval path, using the Cursor adapter's SQLite conversation parser; hits include references that resolve into bounded context
 - **Secret scanning** — walks every bubble's text + `toolFormerData.rawArgs` + `result` against the same pattern table the other adapters use
 - Backup of the database file before any mutation
 

@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional npm update notifications on CLI query/UI launch and the Reclaim page, with a 24-hour cache and environment opt-outs; MCP transport does not perform update checks.
+- Stable tool/session-scoped message references shared by search and context, with content hashes that reject changed messages.
+- Bounded context around search hits, character-offset retrieval, forward/backward cursors, and explicit completeness metadata across MCP, CLI, and a new REST context endpoint.
+- Regression fixtures for all five conversation formats, long-message continuation, changed sources, and following an optimistic claim into a later correction.
+
+### Changed
+
+- **Breaking retrieval response change:** MCP search and CLI search JSON now return `{ matches, coverage }`; context returns `{ messages, page, ... }`. Context defaults to the latest 20 messages with a 12,000-character shared text budget. Web UI response shapes remain unchanged.
+- Search uses the same full-text adapter conversation path as context, including Gemini/Cline/Copilot messages previously missed by the JSONL fallback. Omitted matches and failed sources are reported to agents.
+- Full-text retrieval bypasses the adapters' 2,000-character UI previews. Corrupt retrieval sources raise errors instead of appearing complete.
+
+### Fixed
+
+- Secret redaction now locates regex replacement offsets correctly for patterns with differing capture-group counts, keeping nearby-keyword checks aligned with the source text.
+- MCP server version is read from the package metadata instead of a hard-coded version.
+
+### Documentation
+
+- Updated retrieval contracts, migration examples, adapter guidance, and architecture to match the active implementation.
+- Added a documentation generation check for CI and release preparation; `llms.txt` must match the pages in `docs/src/SUMMARY.md`.
+
 ## [0.4.3] - 2026-06-06
 
 Discoverability metadata sweep — no code changes, just making the project findable.

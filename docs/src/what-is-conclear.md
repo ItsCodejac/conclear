@@ -30,7 +30,8 @@ Capabilities are grouped by *what the agent or user can do*. For each row: which
 | Capability | Tools | Surfaces |
 |---|---|---|
 | Per-session detail (metadata, image inventory, tool-result bytes) | all 5 | UI, REST `GET /sessions/:id`, MCP `conclear_summary` |
-| Clean conversation (user/assistant text only, system tags stripped) | all 5 | UI, CLI `context`, MCP `conclear_context`, REST |
+| Bounded conversation text with message references and continuation cursors | all 5 | CLI `context`, MCP `conclear_context`, REST `GET /api/sessions/:id/context` |
+| Conversation preview and timeline | all 5 | UI, REST |
 | Per-image preview + full base64 fetch | all 5 | UI, REST |
 | Image dimension inference from base64 header (no full decode) | all 5 | (internal — surfaces as "oversized image" warning) |
 | Token / cost analytics from the tool's own metadata | cline | UI, MCP, REST `Session.usage` |
@@ -47,10 +48,10 @@ Capabilities are grouped by *what the agent or user can do*. For each row: which
 
 | Capability | Tools | Surfaces |
 |---|---|---|
-| Global text search over messages across every detected tool | claude, cline (best); copilot/gemini/cursor (best-effort) | UI `Cmd+K`, MCP `conclear_search`, REST `GET /search` |
-| System-tag stripping so hook/sysprompt noise doesn't pollute results | all 5 | (always on) |
+| Text search over parsed user/assistant messages, with source references | all 5 | UI `Cmd+K`, CLI `search`, MCP `conclear_search`, REST `GET /api/search` |
+| Omitted-match and failed-source metadata | all 5 | CLI search JSON, MCP `conclear_search` |
 
-Why "best-effort" for some: search reads files line-by-line and looks for Anthropic-shaped JSON. Claude (JSONL) and Cline (JSON array) match cleanly. Copilot's single-JSON, Cursor's SQLite blobs, and Gemini's per-chat JSON degrade gracefully — they just match less.
+Search uses each adapter's full-text conversation parser, including Cursor's SQLite messages and the JSON-based formats. It searches narrative text, including narrative accompanying a tool call, but excludes tool payloads, system-role messages, and images. System-tag cleanup follows the individual parser. See [MCP Server](mcp-server.md) for coverage and navigation details.
 
 ### Mutate (with mandatory timestamped backup)
 
@@ -67,7 +68,7 @@ Why "best-effort" for some: search reads files line-by-line and looks for Anthro
 | Capability | Tools | Surfaces |
 |---|---|---|
 | Markdown export with rich tool details, diffs, headings | claude, cline, gemini | UI, CLI `export`, REST `GET /sessions/:id/export` |
-| Plain-text export (`--format txt`) | claude | CLI |
+| Plain-text export (`--format txt`) | claude, cline, gemini | CLI |
 
 ### Security
 
@@ -95,8 +96,8 @@ Things that *fall out of composing primitives*, not separate commands. Agents ha
 
 - **Recover a deleted file the agent had read or written.** The full content lives in the session's tool results, retrievable by line number even after the file is gone from disk.
 - **Time-travel a single file across an agent run.** Multiple versions per file, ordered by line number / timestamp, let you diff version *n* vs *n−1*.
-- **"When did X first/last happen?"** Cross-tool search returns timestamps + session names + roles, system-tag stripped.
-- **Pull clean context from session A into session B.** `conclear_context` returns user/assistant text only, capped at 100KB — an agent in another IDE can ingest it directly.
+- **"When did X first/last happen?"** Cross-tool search returns session names, roles, and timestamps when the source records them. Limited search results are not proof of the first or last occurrence.
+- **Pull clean context from session A into session B.** `conclear_context` returns bounded pages with source references, defaulting to the last 20 messages and 12,000 text characters. Agents can request a window around a search hit and retrieve more only when needed.
 - **Audit replay of an agent's actions.** Timeline events (`edit | read | write | bash | search | agent | image | error`) reconstruct what the agent actually did, including bash commands with exit codes.
 - **Find code the agent suggested but you never committed.** Diff `parseFileHistory` results against the current git tree.
 - **Triage where a leaked secret first appeared.** Loop `listSessions()` → `scanSecrets()` and sort by severity.
@@ -106,6 +107,9 @@ Things that *fall out of composing primitives*, not separate commands. Agents ha
 ## Known limitations (latent capabilities)
 
 Honest about what doesn't work yet:
+
+- **Automatic correction discovery and checkpoints are not implemented.** Agents can follow later pages within a session and search other sessions, but ConClear does not decide which claims remain valid or maintain project beliefs.
+- **Retrieval reads the source again.** Context responses are bounded; disk work still grows with the archive. Cursors expire when the parsed conversation changes, including when a live session grows. Message references remain usable while their identity and text are unchanged.
 
 - **Windsurf chats are not readable.** Cascade conversations are stored as encrypted protobuf files in `~/.codeium/windsurf/cascade/*.pb`. Reading them would require reverse-engineering Codeium's encryption. ConClear *can* still install its MCP server into Windsurf (`conclear install --windsurf`) so any Windsurf session can query *other* tools' history through ConClear.
 - **Cursor file history.** Cursor stores tool calls in `toolFormerData` blobs inside `cursorDiskKV` SQLite rows. The blob shape is parseable but not yet wired into `getFileHistory`. Until that lands, file recovery works for Claude Code and Cline only.

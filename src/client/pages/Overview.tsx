@@ -9,6 +9,7 @@ import { ToolBadge } from '../components/ToolBadge';
 import { useDerived } from '../hooks/useDerived';
 import { useScanCache } from '../hooks/useScanCache';
 import { OnboardingBanner } from '../extras/OnboardingBanner';
+import { UpdateBanner } from '../extras/UpdateBanner';
 
 interface Props {
   sessions: Session[];
@@ -45,6 +46,7 @@ export function Overview({ sessions, onOpen, onGoto, onClean, onRescan, onConnec
         </div>
       </div>
 
+      <UpdateBanner />
       <OnboardingBanner onConnect={onConnect} />
 
       {/* hero */}

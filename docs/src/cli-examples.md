@@ -6,6 +6,21 @@
 conclear search "auth middleware" --project myapp --limit 5
 ```
 
+## Follow a search hit into its original conversation
+
+```bash
+# Inspect references and coverage; do not discard the coverage metadata
+conclear search "pair_dip" --project myapp --limit 5 --json
+
+# Substitute sessionId, tool, and messageRef from a returned match
+conclear context SESSION_ID --tool claude --around MESSAGE_REF --before 1 --after 3 --max-chars 6000 --json
+
+# Substitute page.nextCursor to continue at the first unread character
+conclear context SESSION_ID --tool claude --cursor NEXT_CURSOR --max-chars 6000 --json
+```
+
+Use the same session and tool for continuation. Check `page.complete`, `hasLater`, and `hasEarlier`; a finished window can still omit later evidence. For a match deep inside a long message, use `--around MESSAGE_REF --before 0 --offset MATCH_OFFSET`.
+
 ## Find and recover a file version
 
 ```bash
@@ -48,11 +63,11 @@ conclear export my-session --output session.txt --format txt
 ## Pipe context into current work
 
 ```bash
-# Get the last 200 lines of conversation
-conclear context my-session | head -200
+# Request up to the latest 10 messages, within a shared 6,000-character budget
+conclear context my-session --limit 10 --max-chars 6000 --json
 
 # Use with AI tools that accept stdin
-conclear context my-session | pbcopy
+conclear context my-session --limit 10 --max-chars 6000 | pbcopy
 ```
 
 ## Scan for leaked secrets
@@ -67,14 +82,14 @@ conclear scan my-session --json
 
 ## JSON output for scripting
 
-All query commands support `--json` for structured output:
+Search, sessions, files, summary, context, and scan support `--json`. Export writes a document instead:
 
 ```bash
 # Get session list as JSON
 conclear sessions --json | jq '.[0].id'
 
 # Search with JSON output
-conclear search "database migration" --json | jq '.[] | .text'
+conclear search "database migration" --json | jq '.matches[] | .text'
 ```
 
 ## Install ConClear into your AI clients

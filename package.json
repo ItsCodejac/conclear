@@ -58,7 +58,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build && npm test"
+    "docs:generate": "node tools/generate-llms-txt.mjs",
+    "docs:check": "node tools/generate-llms-txt.mjs --check",
+    "prepublishOnly": "npm run docs:check && npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

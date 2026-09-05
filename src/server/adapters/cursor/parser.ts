@@ -493,7 +493,7 @@ import type { ChatMessage, TimelineEvent, TimelineEventType, ParsedConversation 
 export type CursorMessage = ChatMessage;
 export type CursorParsedConversation = ParsedConversation;
 
-export function parseConversation(dbPath: string, composerId: string): CursorParsedConversation {
+export function parseConversation(dbPath: string, composerId: string, options: { fullText?: boolean } = {}): CursorParsedConversation {
   const db = openDb(dbPath);
   const messages: ChatMessage[] = [];
   const timeline: TimelineEvent[] = [];
@@ -501,14 +501,20 @@ export function parseConversation(dbPath: string, composerId: string): CursorPar
   try {
     const row = db.prepare('SELECT value FROM cursorDiskKV WHERE key = ?')
       .get(`composerData:${composerId}`) as { value: string } | undefined;
-    if (!row?.value) return { messages, timeline };
+    if (!row?.value) {
+      if (options.fullText) throw new Error('Cursor conversation is missing');
+      return { messages, timeline };
+    }
 
     const data = JSON.parse(row.value) as ComposerData;
     const headers = data.fullConversationHeadersOnly || [];
 
     for (const h of headers) {
       const bubble = getBubble(db, data.composerId, h.bubbleId);
-      if (!bubble) continue;
+      if (!bubble) {
+        if (options.fullText) throw new Error('Cursor conversation has a missing message');
+        continue;
+      }
 
       const role: 'user' | 'assistant' = bubble.type === 1 ? 'user' : 'assistant';
       const hasImage = (bubble.images?.length || 0) > 0 &&
@@ -522,7 +528,7 @@ export function parseConversation(dbPath: string, composerId: string): CursorPar
           id: bubble.bubbleId,
           role: 'assistant',
           text: bubble.text || '',
-          toolCall: {
+          toolCall: options.fullText ? undefined : {
             name: toolName,
             args: tfd.rawArgs || '',
             result: tfd.result ? (tfd.result.length > 2000 ? tfd.result.slice(0, 2000) + '...' : tfd.result) : undefined,

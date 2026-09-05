@@ -285,9 +285,9 @@ export class ClaudeAdapter implements Adapter {
     await restoreImageData(filePath, imageId, base64, mediaType);
   }
 
-  async getConversation(sessionId: string): Promise<ParsedConversation> {
+  async getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<ParsedConversation> {
     const filePath = await this.findSessionFile(sessionId);
-    return parseConversation(filePath);
+    return parseConversation(filePath, options);
   }
 
   async getFileHistory(sessionId: string): Promise<FileHistory[]> {

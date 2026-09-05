@@ -69,8 +69,8 @@ export async function findAdapterFor(session: Session): Promise<Adapter | null> 
  * Resolve a session by ID, partial ID, name, partial name, or preview text.
  * When multiple sessions match, the most recently active one wins.
  */
-export async function resolveSession(query: string): Promise<Session | null> {
-  const sessions = await listAllSessions();
+export async function resolveSession(query: string, tool?: Session['tool']): Promise<Session | null> {
+  const sessions = (await listAllSessions()).filter(s => !tool || s.tool === tool);
   const q = query.toLowerCase();
 
   let match = sessions.find(s => s.id === query);

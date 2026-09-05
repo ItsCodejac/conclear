@@ -13,7 +13,9 @@ import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { z } from 'zod';
 
-import { searchAllAdapters } from './server/search.js';
+import { searchConversations } from './server/search.js';
+import { contextPage, readMessages } from './server/context.js';
+import { getCurrentVersion } from './update-check.js';
 import { listAllSessions, findAdapterFor, resolveSession as resolveSessionShared } from './server/adapters/registry.js';
 import type { Session } from './server/adapters/types.js';
 
@@ -41,7 +43,7 @@ const resolveSession = resolveSessionShared;
 
 const server = new McpServer({
   name: 'conclear-mcp-server',
-  version: '0.1.0',
+  version: getCurrentVersion(),
 });
 
 // ── Tool: conclear_search ───────────────────────────────────────────────────
@@ -50,18 +52,9 @@ server.registerTool(
   'conclear_search',
   {
     title: 'Search ConClear Sessions',
-    description: `Search messages across all ConClear sessions by text query.
-
-Returns matching messages with session name, timestamp, role, and a snippet of text around the match.
-
-Args:
-  - query (string): Text to search for across all session messages
-  - project (string, optional): Filter to sessions whose project name contains this string
-  - limit (number, optional): Maximum results to return (default 20, max 100)
-
-Returns: JSON array of matches with sessionId, sessionName, project, timestamp, role, text snippet.`,
+    description: `Search recorded user/assistant text. Returns compact matches with messageRef, messageIndex, matchOffset, and coverage metadata. Use conclear_context with sessionId as session, tool, and messageRef as around to inspect the original passage. Results are evidence, not verified conclusions. Omitted matches and unreadable sources are explicit.`,
     inputSchema: {
-      query: z.string().min(1).describe('Text to search for across session messages'),
+      query: z.string().trim().min(1).max(500).describe('Text to search for across session messages'),
       project: z.string().optional().describe('Filter to sessions whose project name contains this string'),
       limit: z.number().int().min(1).max(100).default(20).describe('Maximum results to return'),
     },
@@ -74,21 +67,11 @@ Returns: JSON array of matches with sessionId, sessionName, project, timestamp, 
   },
   async ({ query, project, limit }) => {
     try {
-      const results = await searchAllAdapters(query, limit, project);
-      const data = results.map(r => ({
-        sessionId: r.sessionId,
-        sessionName: r.sessionName,
-        project: decodeProjectDir(r.project),
-        tool: r.tool,
-        timestamp: r.timestamp,
-        role: r.role,
-        text: r.text,
-      }));
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
-      };
+      const data = await searchConversations(query, limit, project);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
     } catch (error) {
       return {
+        isError: true,
         content: [{ type: 'text' as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
       };
     }
@@ -356,16 +339,17 @@ server.registerTool(
   'conclear_context',
   {
     title: 'Get Conversation Context from ConClear Session',
-    description: `Get clean conversation text from a ConClear session (user and assistant messages only, no tool results noise).
-
-Args:
-  - session (string): Session name, ID, or partial match
-  - limit (number, optional): Return only the last N messages (default: all messages)
-
-Returns: JSON array of messages with role, timestamp, and text.`,
+    description: `Retrieve bounded original conversation text with stable message references and completeness metadata. Defaults to the last 20 messages and 12,000 text characters. Use around from a search hit for nearby messages (default 3 before, 6 after). Use nextCursor/previousCursor as cursor to continue; long messages resume at the first unread character. Supply tool from the search hit to disambiguate session IDs. Changed conversations invalidate cursors; changed messages invalidate references. Coverage is parsed user/assistant text, not tool results. Do not treat a partial page as the complete history.`,
     inputSchema: {
       session: z.string().min(1).describe('Session name, ID, or partial match'),
-      limit: z.number().int().min(1).optional().describe('Return only the last N messages'),
+      tool: z.enum(['claude', 'gemini', 'cline', 'cursor', 'copilot']).optional().describe('Tool from the search result'),
+      around: z.string().max(256).optional().describe('Exact messageRef from search or context'),
+      before: z.number().int().min(0).max(20).optional().describe('Messages before around (default 3)'),
+      after: z.number().int().min(0).max(20).optional().describe('Messages after around (default 6)'),
+      offset: z.number().int().min(0).optional().describe('Start at a character within around; requires before=0. Use matchOffset for a deep search hit.'),
+      cursor: z.string().max(2048).optional().describe('Continuation cursor; do not combine with around/before/after'),
+      limit: z.number().int().min(1).max(50).optional().describe('Maximum messages per page (default 20)'),
+      maxChars: z.number().int().min(256).max(50000).optional().describe('Shared text-character budget, excluding JSON metadata (default 12000)'),
     },
     annotations: {
       readOnlyHint: true,
@@ -374,51 +358,16 @@ Returns: JSON array of messages with role, timestamp, and text.`,
       openWorldHint: false,
     },
   },
-  async ({ session: sessionQuery, limit }) => {
+  async ({ session: sessionQuery, tool, ...options }) => {
     try {
-      const session = await resolveSession(sessionQuery);
-      if (!session) {
-        return {
-          content: [{ type: 'text' as const, text: `Error: Session not found for query "${sessionQuery}". Use conclear_sessions to list available sessions.` }],
-        };
-      }
-
-      const a = await findAdapterFor(session);
-      if (!a) {
-        return {
-          content: [{ type: 'text' as const, text: `Error: No adapter found for session ${session.id}` }],
-        };
-      }
-      const conversation = await a.getConversation(session.id);
-
-      // Filter to user/assistant text only, no tool results
-      let messages = (conversation?.messages ?? []).filter(m =>
-        (m.role === 'user' || m.role === 'assistant') && m.text?.trim().length > 0 && !m.toolUse && !m.toolCall
-      );
-
-      if (limit) {
-        messages = messages.slice(-limit);
-      }
-
-      const data = messages.map(m => ({
-        role: m.role,
-        timestamp: m.timestamp,
-        text: truncate(m.text, 4000),
-      }));
-
-      // Truncate total output to avoid overwhelming context
-      const output = JSON.stringify(data, null, 2);
-      const finalOutput = output.length > 100000
-        ? output.slice(0, 100000) + '\n... (truncated, use limit parameter to get fewer messages)'
-        : output;
-
-      return {
-        content: [{ type: 'text' as const, text: finalOutput }],
-      };
+      const session = await resolveSessionShared(sessionQuery, tool);
+      if (!session) throw new Error('Session not found. Use conclear_sessions to list available sessions.');
+      const adapter = await findAdapterFor(session);
+      if (!adapter) throw new Error(`No adapter found for session ${session.id}`);
+      const data = contextPage(session, await readMessages(adapter, session), options);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
     } catch (error) {
-      return {
-        content: [{ type: 'text' as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
-      };
+      return { isError: true, content: [{ type: 'text' as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
     }
   },
 );

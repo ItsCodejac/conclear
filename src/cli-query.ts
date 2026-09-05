@@ -7,7 +7,7 @@
  * Roo Code, Gemini, Copilot).
  *
  * Where an adapter doesn't support a feature (file history is Claude / Cline
- * only today, scan / export are Claude only), the CLI prints a brief
+ * only today, scan excludes Copilot and export supports Claude / Cline / Gemini), the CLI prints a brief
  * explanation instead of throwing.
  */
 

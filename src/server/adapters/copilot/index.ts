@@ -302,8 +302,8 @@ export class CopilotAdapter implements Adapter {
     await writeFile(filePath, result, 'utf-8');
   }
 
-  async getConversation(sessionId: string): Promise<CopilotParsedConversation> {
+  async getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<CopilotParsedConversation> {
     const filePath = await this.findSessionFile(sessionId);
-    return parseConversation(filePath);
+    return parseConversation(filePath, options);
   }
 }

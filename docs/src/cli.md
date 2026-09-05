@@ -16,7 +16,7 @@ These commands run standalone -- they read session data directly:
 - `files` -- find file versions from past sessions
 - `sessions` -- list all indexed sessions
 - `summary` -- get a session overview
-- `context` -- dump clean conversation text
+- `context` -- retrieve bounded conversation pages with source references
 - `export` -- export session as markdown
 - `scan` -- scan for potential secrets
 
@@ -42,7 +42,7 @@ These commands wire ConClear up to AI clients. See [Install into AI Clients](ins
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Output structured JSON (works on all query commands) |
+| `--json` | Output structured JSON (search, sessions, files, summary, context, scan) |
 | `--help`, `-h` | Show help |
 
 ## Session Resolution

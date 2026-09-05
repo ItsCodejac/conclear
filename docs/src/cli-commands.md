@@ -14,7 +14,7 @@ conclear search <query> [--project <name>] [--limit <n>] [--json]
 | `--limit <n>` | Maximum results to return (default: 10) |
 | `--json` | Output as JSON |
 
-Output includes session name, timestamp, role (user/assistant), and a text snippet around the match.
+Output includes session name, timestamp when available, role, a snippet, message reference, and match offset. `--json` returns `{ matches, coverage }`, including omitted-match and failed-source counts. Search covers parsed conversation text; tool payloads are excluded.
 
 ## conclear files
 
@@ -65,17 +65,20 @@ Output includes:
 
 ## conclear context
 
-Dump clean conversation text from a session. Includes only user and assistant messages -- no tool results or protocol noise.
+Retrieve a bounded page of user/assistant conversation text. Defaults to the last 20 messages with a shared 12,000-character text budget.
 
 ```bash
-conclear context <session-name-or-id> [--json]
+conclear context <session> [--tool claude] [--limit 20] [--max-chars 12000] [--json]
+conclear context <session> --around <message-ref> --before 1 --after 3 --json
+conclear context <session> --cursor <next-cursor> --json
+conclear context <session> --around <message-ref> --before 0 --offset 20000 --json
 ```
 
-Useful for piping session context into other tools:
+`--json` now returns `{ sessionId, tool, revision, scope, messages, page }`, replacing the former array. Search JSON likewise wraps results in `.matches`. `page.complete`, `hasEarlier`, and `hasLater` identify missing history. `nextCursor` resumes at the first unread character, including within a long message; no output is silently sliced. `previousCursor` opens earlier messages. Cursors expire if the parsed conversation changes; stable message references remain usable while their message identity and text remain unchanged.
 
-```bash
-conclear context my-session | head -200
-```
+Use `--offset` with a search hit's `matchOffset` to reach a deep match; this requires `--around` and `--before 0`. Message limits range from 1–50; text budgets from 256–50,000 UTF-16 characters, excluding metadata. `--before` and `--after` range from 0–20 and require `--around`. Do not combine cursor navigation with around/offset options.
+
+See [MCP Server](mcp-server.md) for the full page contract. Use `export` when you need a full document from an adapter that supports it.
 
 ## conclear export
 

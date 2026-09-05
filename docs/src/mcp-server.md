@@ -40,11 +40,13 @@ VS Code uses `servers` (not `mcpServers`) and requires `"type": "stdio"`. Zed ne
 Search messages across all sessions by text query.
 
 **Inputs:**
-- `query` (string, required) -- text to search for
+- `query` (string, required) -- text to search for, 1–500 characters
 - `project` (string, optional) -- filter by project name
 - `limit` (number, optional) -- max results (default: 20, max: 100)
 
-**Returns:** JSON array of matches with `sessionId`, `sessionName`, `project`, `timestamp`, `role`, `text`.
+**Returns:** `{ matches, coverage }`. Each match includes `sessionId`, `tool`, `messageRef`, `messageIndex`, `matchOffset`, `project`, `timestamp` (when recorded), `role`, and a compact `text` snippet. `coverage` reports searched sessions, matching messages, omitted matches, and failed sources. Narrow the query/project or raise the limit when matches were omitted. Search covers parsed user/assistant text, excluding tool calls, tool results, system messages, and images.
+
+Use `messageRef` as `around` in `conclear_context`, with the match's `sessionId` and `tool`. Search results are recorded evidence, not verified conclusions.
 
 ### conclear_sessions
 
@@ -78,13 +80,36 @@ Get a specific file version from a session.
 
 ### conclear_context
 
-Get clean conversation text from a session (user and assistant messages only).
+Retrieve bounded original conversation text. With no navigation options, returns up to the last 20 messages, sharing a 12,000-character text budget.
 
 **Inputs:**
-- `session` (string, required) -- session name, ID, or partial match
-- `limit` (number, optional) -- return only the last N messages
 
-**Returns:** JSON array of messages with `role`, `timestamp`, `text`. Total output is capped at 100KB.
+- `session` (required): session name, ID, or partial match.
+- `tool`: `claude`, `cline`, `gemini`, `cursor`, or `copilot`; use the value from search to disambiguate IDs.
+- `around`: exact `messageRef` from search or a previous context page.
+- `before` / `after`: surrounding messages (defaults 3 / 6, each 0–20); require `around`.
+- `offset`: start inside the referenced message; requires `around` and `before: 0`. Use a search hit's `matchOffset` to reach a match deep in a long message.
+- `cursor`: `nextCursor` or `previousCursor` from a previous response; cannot be combined with `around`, `before`, `after`, or `offset`.
+- `limit`: maximum messages per page (default 20, maximum 50).
+- `maxChars`: shared text budget (default 12,000; range 256–50,000), excluding JSON metadata. Character offsets use JavaScript UTF-16 units, not tokens or bytes.
+
+**Returns:** an object with `sessionId`, `tool`, `revision`, `scope`, `messages`, and `page`. Each message has a `messageRef`, index, role, timestamp where available, text, character offsets, original character count, and `partial` flag. JSON is always serialized intact; long messages are split into recoverable fragments.
+
+`page.complete` means this response contains the entire parsed conversation text. `windowComplete` means the requested window was delivered; it does **not** mean the conversation is complete. `hasEarlier`, `hasLater`, and continuation cursors identify omitted history. `anchorIncluded` reports whether the budget reached the requested message. If not, reopen it with `before: 0`.
+
+`nextCursor` resumes at the first unread character, including within a long message. It finishes an interrupted window before continuing into later history. `previousCursor` opens earlier messages; if they need multiple pages, follow their `nextCursor` to finish them. `omittedPrefixChars` identifies text before a fragment; reopen that message with `around`, `before: 0`, `after: 0` to retrieve its prefix.
+
+References are scoped to tool and session and include message identity and a content hash. They survive appended messages, but an edited/redacted message (or a changed adapter-generated identity) requires a new search. Cursors are bound to the parsed conversation revision and must be restarted if that conversation changes. Missing or changed references return an error rather than silently selecting another message.
+
+Example workflow:
+
+```json
+{"session":"SESSION_ID","tool":"claude","around":"MESSAGE_REF","before":1,"after":3,"maxChars":6000}
+```
+
+Then pass the returned `page.nextCursor` as `cursor`, keeping the same session/tool. Retrieve only as much later evidence as the question needs. Dates record when something was said, not whether it is still correct.
+
+**Compatibility:** `conclear_context` previously returned an array; it now returns a page object. `conclear_search` previously returned an array; it now returns `{ matches, coverage }`. Update consumers to read `.messages` and `.matches`. The web UI's existing `/api/search` array and `/api/sessions/:id/conversation` preview responses remain unchanged. The bounded REST endpoint is `GET /api/sessions/:id/context`, with the same options as query parameters.
 
 ### conclear_files
 

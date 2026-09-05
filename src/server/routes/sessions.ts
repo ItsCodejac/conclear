@@ -5,6 +5,8 @@ import { ADAPTERS as adapters, clearAllCaches } from '../adapters/registry.js';
 import { BACKUP_DIR } from '../adapters/constants.js';
 import { searchAllAdapters } from '../search.js';
 import { join } from 'path';
+import { contextPage, readMessages, type ContextOptions } from '../context.js';
+import { findAdapterFor, resolveSession } from '../adapters/registry.js';
 
 // Express 5 params can be string | string[]
 function param(req: Request, name: string): string {
@@ -67,6 +69,34 @@ router.get('/sessions/:id', async (req: Request, res: Response) => {
     res.status(404).json({ error: 'Session not found' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// Bounded agent retrieval; the existing conversation route remains the UI preview.
+router.get('/sessions/:id/context', async (req: Request, res: Response) => {
+  try {
+    const options: ContextOptions = {};
+    for (const key of ['around', 'cursor'] as const) {
+      if (req.query[key] !== undefined) {
+        if (typeof req.query[key] !== 'string') throw new Error(`Invalid ${key}`);
+        options[key] = req.query[key] as string;
+      }
+    }
+    for (const key of ['before', 'after', 'limit', 'maxChars', 'offset'] as const) {
+      if (req.query[key] !== undefined) {
+        if (typeof req.query[key] !== 'string' || !/^\d+$/.test(req.query[key] as string)) throw new Error(`Invalid ${key}`);
+        options[key] = Number(req.query[key]);
+      }
+    }
+    const tool = req.query.tool;
+    if (tool !== undefined && (typeof tool !== 'string' || !['claude', 'gemini', 'cline', 'cursor', 'copilot'].includes(tool))) throw new Error('Invalid tool');
+    const session = await resolveSession(param(req, 'id'), tool as Session['tool'] | undefined);
+    if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
+    const adapter = await findAdapterFor(session);
+    if (!adapter) { res.status(404).json({ error: 'Adapter not found' }); return; }
+    res.json(contextPage(session, await readMessages(adapter, session), options));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

@@ -4,7 +4,8 @@
  * docs/src/SUMMARY.md in order, with H1s demoted by one level so the
  * overall outline is browsable as a single document.
  *
- * Run: node tools/generate-llms-txt.mjs
+ * Run: npm run docs:generate
+ * Check without writing: npm run docs:check
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -48,9 +49,20 @@ for (const file of files) {
     blocks.push(demoted.trimEnd());
     blocks.push('');
   } catch (err) {
-    process.stderr.write(`Skipped missing ${file}: ${err.message}\n`);
+    throw new Error(`Cannot include ${file}: ${err.message}`);
   }
 }
 
-await writeFile(OUT, blocks.join('\n') + '\n', 'utf-8');
-process.stderr.write(`Wrote ${OUT} (${blocks.length} blocks)\n`);
+const generated = blocks.join('\n') + '\n';
+if (process.argv.includes('--check')) {
+  const current = await readFile(OUT, 'utf-8').catch(() => null);
+  if (current !== generated) {
+    process.stderr.write('llms.txt is out of date. Run npm run docs:generate and include the result.\n');
+    process.exitCode = 1;
+  } else {
+    process.stderr.write('llms.txt matches the documentation sources.\n');
+  }
+} else {
+  await writeFile(OUT, generated, 'utf-8');
+  process.stderr.write(`Wrote ${OUT} (${blocks.length} blocks)\n`);
+}

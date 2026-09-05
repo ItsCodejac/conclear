@@ -21,3 +21,12 @@ Each backup also writes a `.meta.json` sidecar recording the original file path 
 - [Export](export.md) -- export sessions as markdown documents.
 
 For installing ConClear's MCP server (and Skill) into AI clients — a separate lifecycle from these data operations — see [Install into AI Clients](install.md).
+
+## Update check
+
+After CLI query commands, at web UI launch, and through the web version endpoint, ConClear checks whether a newer version is on npm and shows a one-line nudge (CLI: stderr; UI: a dismissable banner on Reclaim). This is the only network call ConClear makes: a version lookup for the `conclear` package against `registry.npmjs.org`, cached in `~/.conclear/update-check.json` for 24 hours. It sends nothing but the package name.
+
+- Disable with `CONCLEAR_NO_UPDATE_CHECK=1`.
+- Skipped automatically when `CI` is set.
+- Never runs for `conclear mcp` — nothing extraneous is written on the MCP transport.
+- Failures are silent: offline machines see no update-check errors. A stale-cache lookup can add up to 1.5 seconds; a cached version may still produce an update notice.

@@ -817,7 +817,7 @@ function stripSystemXmlTags(input: string): string {
   return result;
 }
 
-function extractTextFromContent(content: unknown): { text: string; toolUse?: string; hasImage: boolean; imageId?: string } {
+function extractTextFromContent(content: unknown, fullText = false): { text: string; toolUse?: string; hasImage: boolean; imageId?: string } {
   let text = '';
   let toolUse: string | undefined;
   let hasImage = false;
@@ -843,7 +843,7 @@ function extractTextFromContent(content: unknown): { text: string; toolUse?: str
             else if (input.pattern) toolUse += `: ${input.pattern}`;
             else if (input.query) toolUse += `: ${String(input.query).slice(0, 80)}`;
           }
-        } else if (b.type === 'tool_result') {
+        } else if (b.type === 'tool_result' && !fullText) {
           const resultContent = b.content;
           if (typeof resultContent === 'string') {
             text += (text ? '\n' : '') + resultContent.slice(0, 200);
@@ -926,7 +926,7 @@ export interface ParsedConversation {
   timeline: TimelineEvent[];
 }
 
-export async function parseConversation(filePath: string): Promise<ParsedConversation> {
+export async function parseConversation(filePath: string, options: { fullText?: boolean } = {}): Promise<ParsedConversation> {
   const messages: ChatMessage[] = [];
   const timeline: TimelineEvent[] = [];
 
@@ -974,7 +974,7 @@ export async function parseConversation(filePath: string): Promise<ParsedConvers
 
       const role = (message.role as string) === 'assistant' ? 'assistant' : 'user';
       const content = message.content;
-      const { text, toolUse, hasImage } = extractTextFromContent(content);
+      const { text, toolUse, hasImage } = extractTextFromContent(content, options.fullText);
 
       // Find image IDs on this line
       let imageId: string | undefined;
@@ -992,8 +992,8 @@ export async function parseConversation(filePath: string): Promise<ParsedConvers
           id: uuid,
           role,
           timestamp,
-          text: text.slice(0, 2000),
-          toolUse,
+          text: options.fullText ? text : text.slice(0, 2000),
+          toolUse: options.fullText ? undefined : toolUse,
           hasImage,
           imageId,
         });
@@ -1055,7 +1055,8 @@ export async function parseConversation(filePath: string): Promise<ParsedConvers
           }
         }
       }
-    } catch {
+    } catch (error) {
+      if (options.fullText) throw error;
       // skip
     }
     lineIdx++;

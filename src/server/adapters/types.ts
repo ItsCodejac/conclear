@@ -143,7 +143,7 @@ export interface Adapter {
   restoreImage(sessionId: string, imageId: string, base64: string, mediaType: string): Promise<void>;
 
   // Conversation read — every adapter implements this.
-  getConversation(sessionId: string): Promise<ParsedConversation>;
+  getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<ParsedConversation>;
 
   // Optional capabilities. The presence/absence of each method is the
   // authoritative answer to "can this adapter do X for this session" —

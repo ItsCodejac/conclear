@@ -259,9 +259,9 @@ export class GeminiAdapter implements Adapter {
     await writeFile(filePath, result, 'utf-8');
   }
 
-  async getConversation(sessionId: string): Promise<GeminiParsedConversation> {
+  async getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<GeminiParsedConversation> {
     const filePath = await this.findSessionFile(sessionId);
-    return parseConversation(filePath);
+    return parseConversation(filePath, options);
   }
 
   async scanSecrets(sessionId: string): Promise<SecretFinding[]> {

@@ -30,5 +30,8 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check generated documentation
+        run: npm run docs:check
+
       - name: Test
         run: npm test

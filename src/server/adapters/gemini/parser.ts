@@ -496,7 +496,7 @@ export interface GeminiParsedConversation {
   timeline: TimelineEvent[];
 }
 
-export async function parseConversation(filePath: string): Promise<GeminiParsedConversation> {
+export async function parseConversation(filePath: string, options: { fullText?: boolean } = {}): Promise<GeminiParsedConversation> {
   const chatMessages: ChatMessage[] = [];
   const timeline: TimelineEvent[] = [];
 
@@ -530,7 +530,7 @@ export async function parseConversation(filePath: string): Promise<GeminiParsedC
           id: msg.id || `msg-${i}`,
           role,
           timestamp: msg.timestamp,
-          text: text.slice(0, 2000),
+          text: options.fullText ? text : text.slice(0, 2000),
           hasImage,
           imageId,
         });
@@ -566,7 +566,8 @@ export async function parseConversation(filePath: string): Promise<GeminiParsedC
         });
       }
     }
-  } catch {
+  } catch (error) {
+    if (options.fullText) throw error;
     // return empty on error
   }
 

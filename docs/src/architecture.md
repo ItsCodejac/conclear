@@ -1,6 +1,6 @@
 # Architecture
 
-ConClear is a full-stack TypeScript application with three main components:
+ConClear is a full-stack TypeScript application with shared session-reading adapters and several entry points:
 
 ## Components
 
@@ -14,35 +14,37 @@ A local Express 5 server that:
 
 ### React Frontend (`src/client/`)
 
-A React 19 single-page application built with Vite. Key components:
+A React 19 single-page application built with Vite. `App.tsx` selects pages and coordinates session loading, scan results, navigation, and toasts.
 
-| Component | Purpose |
-|-----------|---------|
-| `SessionTable` | Session list with search and navigation |
-| `PaneLayout` | Split-pane layout manager |
-| `ImagePreview` | Image thumbnails and lightbox |
-| `TimelineView` | Chronological event log |
-| `ConversationView` | Chat message replay |
-| `FilesView` | File version browser with code viewer |
-| `DiskUsage` | Size visualization |
-| `Toolbar` | Tab switcher and actions |
-| `ContextMenu` | Right-click menu via Radix UI |
-| `ResizeMenu` | Target size selector for resize operations |
-| `ScanResults` | Secret scanning results display |
-| `BackupManager` | View and manage backups |
-| `ConfirmDialog` | Confirmation for destructive operations |
-| `HelpPanel` | Keyboard shortcuts and help |
-| `Toast` | Notification messages |
-| `SizeIndicator` | Visual size badges |
-| `HighlightText` | Search match highlighting |
+| Area | Purpose |
+|------|---------|
+| `pages/Overview.tsx` | Reclaim overview and update notifications |
+| `pages/Sessions.tsx`, `pages/sessions/` | Session browser, detail, images, chat, timeline, files, and security tabs |
+| `pages/Security.tsx`, `hooks/useScanCache.ts` | Shared scan results and redaction workflow |
+| `pages/Connect.tsx`, `hooks/useInstall.ts` | Client installation status and actions |
+| `pages/Backups.tsx` | Backup management |
+| `commands/CommandPalette.tsx` | Session and message search |
+| `hooks/useSessions.ts`, `hooks/useSessionDetail.ts` | Session list caching and detail requests |
+
+`src/client.legacy/` contains the previous frontend and is not the active application. Admin/Teams pages are also present but are not imported by the free build.
 
 ### CLI (`src/cli.ts`, `src/cli-query.ts`)
 
-Zero-dependency CLI that dispatches to query functions, the MCP server, the install lifecycle commands, or the web server. Query commands import the Claude adapter directly -- no server needed.
+The CLI dispatches to query functions, the MCP server, installation commands, or the web server. Query handlers live in `src/cli-query/` and use the shared multi-tool adapter registry without starting a server.
 
 ### MCP Server (`src/mcp-server.ts`)
 
-MCP server using `@modelcontextprotocol/sdk`. Supports both stdio transport (default) and Streamable HTTP (`conclear mcp --http`). Registers five tools for AI agent access.
+MCP server using `@modelcontextprotocol/sdk`. Supports both stdio transport (default) and Streamable HTTP (`conclear mcp --http`). Registers seven read-only tools for AI agent access. Search and context return structured retrieval envelopes; see [MCP Server](mcp-server.md) for their contracts.
+
+### Shared retrieval (`src/server/context.ts`, `src/server/search.ts`)
+
+`src/server/adapters/registry.ts` owns the five session adapters used by REST, CLI, and MCP. Search and bounded context both request `getConversation(id, { fullText: true })`, then use the same message-reference construction. The UI conversation route keeps its preview behavior.
+
+- `searchConversations()` inspects listed sessions and returns `{ matches, coverage }`, reporting omitted matches and failed sources. The web search wrapper retains its array response.
+- `contextPage()` returns `{ messages, page, ... }`, applies a shared text budget, and produces cursors that resume within long messages.
+- References are scoped to the tool/session and derived from message identity and text. Cursors also include a parsed-conversation revision, preventing silent continuation into changed history.
+
+The retrieval layer does not persist another copy of the conversation or generate summaries. Search reads current source conversations on each request; metadata caches are separate from full-text retrieval. It does not implement automatic correction detection or active-conversation checkpoints.
 
 ### Install lifecycle (`src/install/`)
 

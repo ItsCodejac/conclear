@@ -133,8 +133,8 @@ export class CursorAdapter implements Adapter {
     sessionCacheMtime = 0;
   }
 
-  async getConversation(sessionId: string): Promise<CursorParsedConversation> {
-    return parseConversation(CURSOR_DB_PATH, sessionId);
+  async getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<CursorParsedConversation> {
+    return parseConversation(CURSOR_DB_PATH, sessionId, options);
   }
 
   async searchMessages(query: string, limit: number): Promise<SearchResult[]> {

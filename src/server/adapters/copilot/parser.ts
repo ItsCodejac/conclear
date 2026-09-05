@@ -534,7 +534,7 @@ export interface CopilotParsedConversation {
 }
 
 /** Parse a Copilot session into conversation messages and timeline */
-export async function parseConversation(filePath: string): Promise<CopilotParsedConversation> {
+export async function parseConversation(filePath: string, options: { fullText?: boolean } = {}): Promise<CopilotParsedConversation> {
   const chatMessages: ChatMessage[] = [];
   const timeline: TimelineEvent[] = [];
 
@@ -562,7 +562,7 @@ export async function parseConversation(filePath: string): Promise<CopilotParsed
           id: `req-${i}-user`,
           role: 'user',
           timestamp,
-          text: userText.slice(0, 2000),
+          text: options.fullText ? userText : userText.slice(0, 2000),
           hasImage: hasUserImage,
           imageId: userImageId,
         });
@@ -597,7 +597,7 @@ export async function parseConversation(filePath: string): Promise<CopilotParsed
           id: `req-${i}-assistant`,
           role: 'assistant',
           timestamp,
-          text: respText.slice(0, 2000),
+          text: options.fullText ? respText : respText.slice(0, 2000),
           hasImage: hasRespImage,
           imageId: respImageId,
         });
@@ -613,7 +613,8 @@ export async function parseConversation(filePath: string): Promise<CopilotParsed
         });
       }
     }
-  } catch {
+  } catch (error) {
+    if (options.fullText) throw error;
     // return empty on error
   }
 

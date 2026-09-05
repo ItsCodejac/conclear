@@ -279,9 +279,9 @@ export class ClineAdapter implements Adapter {
     await writeFile(apiPath, result, 'utf-8');
   }
 
-  async getConversation(sessionId: string): Promise<ClineParsedConversation> {
+  async getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<ClineParsedConversation> {
     const { apiPath } = await this.findSession(sessionId);
-    return parseConversation(apiPath);
+    return parseConversation(apiPath, options);
   }
 
   async getFileHistory(sessionId: string): Promise<FileHistory[]> {

@@ -8,7 +8,7 @@
  *   conclear files <path-pattern> [--session <name-or-id>] [--latest] [--json]
  *   conclear sessions [--project <name>] [--limit <n>] [--json]
  *   conclear summary <session-name-or-id> [--json]
- *   conclear context <session-name-or-id> [--json]
+ *   conclear context <session-name-or-id> [--around <ref> | --cursor <cursor>] [--json]
  *
  * Install commands:
  *   conclear install [--all] [--<client-id>...] [--no-skill]
@@ -34,7 +34,7 @@ QUERY COMMANDS (no server needed):
   conclear files <path-pattern> [--session <name-or-id>] [--latest] [--json]
   conclear sessions [--project <name>] [--limit <n>] [--json]
   conclear summary <session-name-or-id> [--json]
-  conclear context <session-name-or-id> [--json]
+  conclear context <session-name-or-id> [--around <ref> | --cursor <cursor>] [--json]
   conclear export <session-name-or-id> [--output <file>] [--format md|txt]
   conclear scan <session-name-or-id> [--json]
 
@@ -58,6 +58,11 @@ UI LAUNCHER:
 
 FLAGS:
   --json              Output structured JSON (works on all query commands)
+  --tool <tool>       Context: disambiguate the tool from a search hit
+  --before N / --after N  Context around a reference (defaults 3 / 6)
+  --offset N          Context: start inside around; requires --before 0
+  --limit N           Context: max messages per page (default 20, max 50)
+  --max-chars N       Context: shared text budget (default 12000, max 50000)
   --demo              Read from bundled fixture data (combinable with any command)
   --help, -h          Show this help
 `);
@@ -162,6 +167,10 @@ async function main(): Promise<void> {
       case 'export':   await cmdExport(cmdArgs); break;
       case 'scan':     await cmdScan(cmdArgs); break;
     }
+    // Stderr only, so --json consumers on stdout never see it. Skipped for
+    // `conclear mcp` above — nothing extraneous belongs on an MCP transport.
+    const { notifyUpdateOnStderr } = await import('./update-check.js');
+    await notifyUpdateOnStderr();
     return;
   }
 
@@ -176,6 +185,9 @@ async function main(): Promise<void> {
   await startServer();
   console.log(`Opening ${url} in your browser...`);
   open(url);
+
+  const { notifyUpdateOnStderr } = await import('./update-check.js');
+  await notifyUpdateOnStderr();
 }
 
 main().catch(err => {

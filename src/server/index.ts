@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import sessionRoutes from './routes/sessions.js';
 import installRoutes from './routes/install.js';
+import { getUpdateStatus, getCurrentVersion } from '../update-check.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,6 +14,13 @@ export const PORT = 3789;
 app.use(express.json());
 app.use('/api', sessionRoutes);
 app.use('/api/install', installRoutes);
+
+// Version + update availability. The registry lookup behind this is cached
+// for 24h in ~/.conclear and disabled by CONCLEAR_NO_UPDATE_CHECK / CI.
+app.get('/api/version', async (_req, res) => {
+  const status = await getUpdateStatus();
+  res.json(status ?? { current: getCurrentVersion(), latest: null, updateAvailable: false });
+});
 
 // In production, serve the built Vite frontend
 if (process.env.NODE_ENV === 'production') {

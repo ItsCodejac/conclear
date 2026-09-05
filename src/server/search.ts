@@ -1,176 +1,73 @@
-/**
- * Shared session search used by the REST, MCP, and CLI surfaces.
- *
- * Two layers:
- *  - `searchSessionFile`: line-oriented search over Anthropic-shaped JSONL/JSON
- *    (Claude, Cline). Used as the fallback for adapters without their own.
- *  - `searchAllAdapters`: iterates adapters, calling `adapter.searchMessages`
- *    where present (e.g. Cursor's SQLite-aware variant) and falling back to
- *    `searchSessionFile` otherwise. Single entry point for callers.
- */
-
-import { createReadStream } from 'fs';
-import { createInterface } from 'readline';
-import type { Session, SearchResult } from './adapters/types.js';
+import type { Session } from './adapters/types.js';
 import { ADAPTERS } from './adapters/registry.js';
+import { readMessages } from './context.js';
 
-/** Strip system-level XML tags from text so they don't pollute search results. */
-export function stripSystemTags(input: string): string {
-  return input
-    .replace(/<(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)[^>]*>[\s\S]*?<\/(?:system-reminder|local-command-caveat|command-name|command-message|command-args|task-notification|user-prompt-submit-hook|antml:[a-z_]+|env|functions|function)>/gi, '')
-    .trim();
-}
-
-/** Extract plain text from a JSONL message content field. */
-export function extractMessageText(content: unknown): string {
-  if (typeof content === 'string') return stripSystemTags(content);
-  if (!Array.isArray(content)) return '';
-
-  const parts: string[] = [];
-  for (const block of content) {
-    if (typeof block === 'object' && block !== null) {
-      const b = block as Record<string, unknown>;
-      if (b.type === 'text' && typeof b.text === 'string') {
-        parts.push(b.text);
-      }
-    }
-  }
-  return stripSystemTags(parts.join('\n'));
-}
-
-/**
- * Search a single session file for a query string.
- * Returns up to maxPerSession results. Best-effort for non-JSONL files —
- * lines that aren't valid Anthropic-shaped JSON are skipped.
+/** Search the same full-text messages that context references resolve to.
+ * All listed sessions are inspected; retain only the newest `limit` matches in memory.
+ * Failures are reported by the agent-facing envelope, never called complete.
  */
-export async function searchSessionFile(
-  session: Session,
-  queryLower: string,
-  maxPerSession: number,
-): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
-
-  try {
-    const rl = createInterface({
-      input: createReadStream(session.filePath, { encoding: 'utf-8' }),
-      crlfDelay: Infinity,
-    });
-
-    let lineIdx = 0;
-    for await (const line of rl) {
-      if (results.length >= maxPerSession) {
-        rl.close();
-        break;
-      }
-      if (!line.trim()) { lineIdx++; continue; }
-
-      // Fast pre-checks: skip lines that don't look like user/assistant messages
-      if (!line.includes('"user"') && !line.includes('"assistant"')) { lineIdx++; continue; }
-      if (!line.toLowerCase().includes(queryLower)) { lineIdx++; continue; }
-
-      try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        const type = parsed.type as string;
-        if (type !== 'user' && type !== 'assistant') { lineIdx++; continue; }
-
-        const message = parsed.message as Record<string, unknown> | undefined;
-        if (!message) { lineIdx++; continue; }
-
-        const role = (message.role as string) === 'assistant' ? 'assistant' : 'user';
-        const text = extractMessageText(message.content);
-        if (!text) { lineIdx++; continue; }
-
-        const textLower = text.toLowerCase();
-        const matchIdx = textLower.indexOf(queryLower);
-        if (matchIdx === -1) { lineIdx++; continue; }
-
-        const radius = 100;
-        const start = Math.max(0, matchIdx - radius);
-        const end = Math.min(text.length, matchIdx + queryLower.length + radius);
-        let snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
-        if (start > 0) snippet = '...' + snippet;
-        if (end < text.length) snippet = snippet + '...';
-
-        results.push({
-          sessionId: session.id,
-          sessionName: session.name,
-          project: session.project,
-          tool: session.tool,
-          timestamp: parsed.timestamp as string | undefined,
-          role: role as 'user' | 'assistant',
-          text: snippet,
-          lineNumber: lineIdx,
-        });
-      } catch {
-        // skip unparseable lines
-      }
-      lineIdx++;
-    }
-  } catch {
-    // file read error, skip session
-  }
-
-  return results;
-}
-
-/**
- * Search every detected adapter for messages matching `query`.
- *
- * Adapters that implement `searchMessages` (e.g. Cursor's SQLite-aware
- * variant) get to handle their own search. Adapters without it fall back
- * to `searchSessionFile` over each session, batched in parallel.
- *
- * Results are merged, sorted by timestamp (newest first), and capped at
- * `limit`. An optional `projectFilter` narrows by case-insensitive substring.
- */
-export async function searchAllAdapters(
-  query: string,
-  limit: number,
-  projectFilter?: string,
-): Promise<SearchResult[]> {
+export async function searchConversations(
+  query: string, limit: number, projectFilter?: string,
+  adapters = ADAPTERS,
+) {
+  if (!query.trim() || query.length > 500) throw new Error('query must contain 1–500 characters');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('limit must be an integer from 1 to 100');
   const queryLower = query.toLowerCase();
-  const pLower = projectFilter?.toLowerCase();
-  const all: SearchResult[] = [];
-
-  for (const adapter of ADAPTERS) {
-    try {
-      if (!(await adapter.detect())) continue;
-    } catch { continue; }
-
-    if (adapter.searchMessages) {
-      try {
-        const adapterResults = await adapter.searchMessages(query, limit);
-        const filtered = pLower
-          ? adapterResults.filter(r => r.project.toLowerCase().includes(pLower))
-          : adapterResults;
-        all.push(...filtered);
-      } catch { /* skip on error */ }
-      continue;
-    }
-
+  const matches: ConversationMatch[] = [];
+  const failures: Array<{ tool: string; sessionId?: string }> = [];
+  let matchedMessages = 0;
+  let searchedSessions = 0;
+  const newest = (a: ConversationMatch, b: ConversationMatch) =>
+    (Date.parse(b.timestamp ?? '') || b.lastActiveAt) - (Date.parse(a.timestamp ?? '') || a.lastActiveAt) ||
+    a.tool.localeCompare(b.tool) || a.sessionId.localeCompare(b.sessionId) || b.messageIndex - a.messageIndex;
+  for (const adapter of adapters) {
     let sessions: Session[];
     try {
+      if (!(await adapter.detect())) continue;
       sessions = await adapter.listSessions();
-    } catch { continue; }
-    if (pLower) sessions = sessions.filter(s => s.project.toLowerCase().includes(pLower));
-
-    const batchSize = 20;
-    for (let i = 0; i < sessions.length; i += batchSize) {
-      if (all.length >= limit * 2) break;
-      const batch = sessions.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(s => searchSessionFile(s, queryLower, 5)),
-      );
-      all.push(...batchResults.flat());
+    } catch { failures.push({ tool: adapter.name }); continue; }
+    if (projectFilter) sessions = sessions.filter(s => s.project.toLowerCase().includes(projectFilter.toLowerCase()));
+    for (const session of sessions) {
+      try {
+        const messages = await readMessages(adapter, session);
+        searchedSessions++;
+        messages.forEach((m, messageIndex) => {
+          const matchOffset = m.text.toLowerCase().indexOf(queryLower);
+          if (matchOffset < 0) return;
+          matchedMessages++;
+          const start = Math.max(0, matchOffset - 100);
+          const end = Math.min(m.text.length, matchOffset + query.length + 100);
+          matches.push({
+            sessionId: session.id, sessionName: session.name, project: session.project,
+            tool: session.tool, timestamp: m.timestamp, role: m.role as 'user' | 'assistant',
+            messageRef: m.messageRef, messageIndex, matchOffset, lastActiveAt: session.lastActiveAt,
+            text: (start ? '…' : '') + m.text.slice(start, end).replace(/\s+/g, ' ') + (end < m.text.length ? '…' : ''),
+          });
+          matches.sort(newest);
+          if (matches.length > limit) matches.pop();
+        });
+      } catch { failures.push({ tool: session.tool, sessionId: session.id }); }
     }
   }
+  return {
+    matches: matches.map(({ lastActiveAt: _lastActiveAt, ...m }) => m),
+    coverage: {
+      searchedSessions, matchedMessages, returnedMatches: matches.length,
+      omittedMatches: matchedMessages - matches.length, failedSources: failures.slice(0, 20),
+      failedSourceCount: failures.length, complete: failures.length === 0 && matchedMessages <= limit,
+      scope: 'Parsed user/assistant text in detected sessions; excludes tool calls, tool results, system messages, and images.',
+      continuation: 'Use messageRef as around in conclear_context. If matches were omitted, narrow query/project or increase limit (max 100).',
+    },
+  };
+}
 
-  all.sort((a, b) => {
-    if (!a.timestamp && !b.timestamp) return 0;
-    if (!a.timestamp) return 1;
-    if (!b.timestamp) return -1;
-    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-  });
+interface ConversationMatch {
+  sessionId: string; sessionName: string | null; project: string; tool: Session['tool'];
+  timestamp?: string; role: 'user' | 'assistant'; text: string;
+  messageRef: string; messageIndex: number; matchOffset: number; lastActiveAt: number;
+}
 
-  return all.slice(0, limit);
+/** Existing web search keeps its array response. Agents use searchConversations for coverage. */
+export async function searchAllAdapters(query: string, limit: number, projectFilter?: string) {
+  return (await searchConversations(query, Math.min(limit, 100), projectFilter)).matches;
 }

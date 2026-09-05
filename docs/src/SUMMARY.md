@@ -37,3 +37,4 @@
   - [Adapter Pattern](adapter-pattern.md)
   - [Data Formats](data-formats.md)
 - [Keyboard Shortcuts](keyboard-shortcuts.md)
+- [Development and releases](development.md)

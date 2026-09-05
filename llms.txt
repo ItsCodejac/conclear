@@ -62,7 +62,8 @@ Capabilities are grouped by *what the agent or user can do*. For each row: which
 | Capability | Tools | Surfaces |
 |---|---|---|
 | Per-session detail (metadata, image inventory, tool-result bytes) | all 5 | UI, REST `GET /sessions/:id`, MCP `conclear_summary` |
-| Clean conversation (user/assistant text only, system tags stripped) | all 5 | UI, CLI `context`, MCP `conclear_context`, REST |
+| Bounded conversation text with message references and continuation cursors | all 5 | CLI `context`, MCP `conclear_context`, REST `GET /api/sessions/:id/context` |
+| Conversation preview and timeline | all 5 | UI, REST |
 | Per-image preview + full base64 fetch | all 5 | UI, REST |
 | Image dimension inference from base64 header (no full decode) | all 5 | (internal — surfaces as "oversized image" warning) |
 | Token / cost analytics from the tool's own metadata | cline | UI, MCP, REST `Session.usage` |
@@ -79,10 +80,10 @@ Capabilities are grouped by *what the agent or user can do*. For each row: which
 
 | Capability | Tools | Surfaces |
 |---|---|---|
-| Global text search over messages across every detected tool | claude, cline (best); copilot/gemini/cursor (best-effort) | UI `Cmd+K`, MCP `conclear_search`, REST `GET /search` |
-| System-tag stripping so hook/sysprompt noise doesn't pollute results | all 5 | (always on) |
+| Text search over parsed user/assistant messages, with source references | all 5 | UI `Cmd+K`, CLI `search`, MCP `conclear_search`, REST `GET /api/search` |
+| Omitted-match and failed-source metadata | all 5 | CLI search JSON, MCP `conclear_search` |
 
-Why "best-effort" for some: search reads files line-by-line and looks for Anthropic-shaped JSON. Claude (JSONL) and Cline (JSON array) match cleanly. Copilot's single-JSON, Cursor's SQLite blobs, and Gemini's per-chat JSON degrade gracefully — they just match less.
+Search uses each adapter's full-text conversation parser, including Cursor's SQLite messages and the JSON-based formats. It searches narrative text, including narrative accompanying a tool call, but excludes tool payloads, system-role messages, and images. System-tag cleanup follows the individual parser. See [MCP Server](mcp-server.md) for coverage and navigation details.
 
 ### Mutate (with mandatory timestamped backup)
 
@@ -99,7 +100,7 @@ Why "best-effort" for some: search reads files line-by-line and looks for Anthro
 | Capability | Tools | Surfaces |
 |---|---|---|
 | Markdown export with rich tool details, diffs, headings | claude, cline, gemini | UI, CLI `export`, REST `GET /sessions/:id/export` |
-| Plain-text export (`--format txt`) | claude | CLI |
+| Plain-text export (`--format txt`) | claude, cline, gemini | CLI |
 
 ### Security
 
@@ -127,8 +128,8 @@ Things that *fall out of composing primitives*, not separate commands. Agents ha
 
 - **Recover a deleted file the agent had read or written.** The full content lives in the session's tool results, retrievable by line number even after the file is gone from disk.
 - **Time-travel a single file across an agent run.** Multiple versions per file, ordered by line number / timestamp, let you diff version *n* vs *n−1*.
-- **"When did X first/last happen?"** Cross-tool search returns timestamps + session names + roles, system-tag stripped.
-- **Pull clean context from session A into session B.** `conclear_context` returns user/assistant text only, capped at 100KB — an agent in another IDE can ingest it directly.
+- **"When did X first/last happen?"** Cross-tool search returns session names, roles, and timestamps when the source records them. Limited search results are not proof of the first or last occurrence.
+- **Pull clean context from session A into session B.** `conclear_context` returns bounded pages with source references, defaulting to the last 20 messages and 12,000 text characters. Agents can request a window around a search hit and retrieve more only when needed.
 - **Audit replay of an agent's actions.** Timeline events (`edit | read | write | bash | search | agent | image | error`) reconstruct what the agent actually did, including bash commands with exit codes.
 - **Find code the agent suggested but you never committed.** Diff `parseFileHistory` results against the current git tree.
 - **Triage where a leaked secret first appeared.** Loop `listSessions()` → `scanSecrets()` and sort by severity.
@@ -138,6 +139,9 @@ Things that *fall out of composing primitives*, not separate commands. Agents ha
 ## Known limitations (latent capabilities)
 
 Honest about what doesn't work yet:
+
+- **Automatic correction discovery and checkpoints are not implemented.** Agents can follow later pages within a session and search other sessions, but ConClear does not decide which claims remain valid or maintain project beliefs.
+- **Retrieval reads the source again.** Context responses are bounded; disk work still grows with the archive. Cursors expire when the parsed conversation changes, including when a live session grows. Message references remain usable while their identity and text are unchanged.
 
 - **Windsurf chats are not readable.** Cascade conversations are stored as encrypted protobuf files in `~/.codeium/windsurf/cascade/*.pb`. Reading them would require reverse-engineering Codeium's encryption. ConClear *can* still install its MCP server into Windsurf (`conclear install --windsurf`) so any Windsurf session can query *other* tools' history through ConClear.
 - **Cursor file history.** Cursor stores tool calls in `toolFormerData` blobs inside `cursorDiskKV` SQLite rows. The blob shape is parseable but not yet wired into `getFileHistory`. Until that lands, file recovery works for Claude Code and Cline only.
@@ -838,7 +842,7 @@ These commands run standalone -- they read session data directly:
 - `files` -- find file versions from past sessions
 - `sessions` -- list all indexed sessions
 - `summary` -- get a session overview
-- `context` -- dump clean conversation text
+- `context` -- retrieve bounded conversation pages with source references
 - `export` -- export session as markdown
 - `scan` -- scan for potential secrets
 
@@ -864,7 +868,7 @@ These commands wire ConClear up to AI clients. See [Install into AI Clients](ins
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Output structured JSON (works on all query commands) |
+| `--json` | Output structured JSON (search, sessions, files, summary, context, scan) |
 | `--help`, `-h` | Show help |
 
 ## Session Resolution
@@ -895,7 +899,7 @@ conclear search <query> [--project <name>] [--limit <n>] [--json]
 | `--limit <n>` | Maximum results to return (default: 10) |
 | `--json` | Output as JSON |
 
-Output includes session name, timestamp, role (user/assistant), and a text snippet around the match.
+Output includes session name, timestamp when available, role, a snippet, message reference, and match offset. `--json` returns `{ matches, coverage }`, including omitted-match and failed-source counts. Search covers parsed conversation text; tool payloads are excluded.
 
 ## conclear files
 
@@ -946,17 +950,20 @@ Output includes:
 
 ## conclear context
 
-Dump clean conversation text from a session. Includes only user and assistant messages -- no tool results or protocol noise.
+Retrieve a bounded page of user/assistant conversation text. Defaults to the last 20 messages with a shared 12,000-character text budget.
 
 ```bash
-conclear context <session-name-or-id> [--json]
+conclear context <session> [--tool claude] [--limit 20] [--max-chars 12000] [--json]
+conclear context <session> --around <message-ref> --before 1 --after 3 --json
+conclear context <session> --cursor <next-cursor> --json
+conclear context <session> --around <message-ref> --before 0 --offset 20000 --json
 ```
 
-Useful for piping session context into other tools:
+`--json` now returns `{ sessionId, tool, revision, scope, messages, page }`, replacing the former array. Search JSON likewise wraps results in `.matches`. `page.complete`, `hasEarlier`, and `hasLater` identify missing history. `nextCursor` resumes at the first unread character, including within a long message; no output is silently sliced. `previousCursor` opens earlier messages. Cursors expire if the parsed conversation changes; stable message references remain usable while their message identity and text remain unchanged.
 
-```bash
-conclear context my-session | head -200
-```
+Use `--offset` with a search hit's `matchOffset` to reach a deep match; this requires `--around` and `--before 0`. Message limits range from 1–50; text budgets from 256–50,000 UTF-16 characters, excluding metadata. `--before` and `--after` range from 0–20 and require `--around`. Do not combine cursor navigation with around/offset options.
+
+See [MCP Server](mcp-server.md) for the full page contract. Use `export` when you need a full document from an adapter that supports it.
 
 ## conclear export
 
@@ -1042,6 +1049,21 @@ Output shows, per client: whether the client is detected, whether the MCP server
 conclear search "auth middleware" --project myapp --limit 5
 ```
 
+## Follow a search hit into its original conversation
+
+```bash
+# Inspect references and coverage; do not discard the coverage metadata
+conclear search "pair_dip" --project myapp --limit 5 --json
+
+# Substitute sessionId, tool, and messageRef from a returned match
+conclear context SESSION_ID --tool claude --around MESSAGE_REF --before 1 --after 3 --max-chars 6000 --json
+
+# Substitute page.nextCursor to continue at the first unread character
+conclear context SESSION_ID --tool claude --cursor NEXT_CURSOR --max-chars 6000 --json
+```
+
+Use the same session and tool for continuation. Check `page.complete`, `hasLater`, and `hasEarlier`; a finished window can still omit later evidence. For a match deep inside a long message, use `--around MESSAGE_REF --before 0 --offset MATCH_OFFSET`.
+
 ## Find and recover a file version
 
 ```bash
@@ -1084,11 +1106,11 @@ conclear export my-session --output session.txt --format txt
 ## Pipe context into current work
 
 ```bash
-# Get the last 200 lines of conversation
-conclear context my-session | head -200
+# Request up to the latest 10 messages, within a shared 6,000-character budget
+conclear context my-session --limit 10 --max-chars 6000 --json
 
 # Use with AI tools that accept stdin
-conclear context my-session | pbcopy
+conclear context my-session --limit 10 --max-chars 6000 | pbcopy
 ```
 
 ## Scan for leaked secrets
@@ -1103,14 +1125,14 @@ conclear scan my-session --json
 
 ## JSON output for scripting
 
-All query commands support `--json` for structured output:
+Search, sessions, files, summary, context, and scan support `--json`. Export writes a document instead:
 
 ```bash
 # Get session list as JSON
 conclear sessions --json | jq '.[0].id'
 
 # Search with JSON output
-conclear search "database migration" --json | jq '.[] | .text'
+conclear search "database migration" --json | jq '.matches[] | .text'
 ```
 
 ## Install ConClear into your AI clients
@@ -1184,11 +1206,13 @@ VS Code uses `servers` (not `mcpServers`) and requires `"type": "stdio"`. Zed ne
 Search messages across all sessions by text query.
 
 **Inputs:**
-- `query` (string, required) -- text to search for
+- `query` (string, required) -- text to search for, 1–500 characters
 - `project` (string, optional) -- filter by project name
 - `limit` (number, optional) -- max results (default: 20, max: 100)
 
-**Returns:** JSON array of matches with `sessionId`, `sessionName`, `project`, `timestamp`, `role`, `text`.
+**Returns:** `{ matches, coverage }`. Each match includes `sessionId`, `tool`, `messageRef`, `messageIndex`, `matchOffset`, `project`, `timestamp` (when recorded), `role`, and a compact `text` snippet. `coverage` reports searched sessions, matching messages, omitted matches, and failed sources. Narrow the query/project or raise the limit when matches were omitted. Search covers parsed user/assistant text, excluding tool calls, tool results, system messages, and images.
+
+Use `messageRef` as `around` in `conclear_context`, with the match's `sessionId` and `tool`. Search results are recorded evidence, not verified conclusions.
 
 ### conclear_sessions
 
@@ -1222,13 +1246,36 @@ Get a specific file version from a session.
 
 ### conclear_context
 
-Get clean conversation text from a session (user and assistant messages only).
+Retrieve bounded original conversation text. With no navigation options, returns up to the last 20 messages, sharing a 12,000-character text budget.
 
 **Inputs:**
-- `session` (string, required) -- session name, ID, or partial match
-- `limit` (number, optional) -- return only the last N messages
 
-**Returns:** JSON array of messages with `role`, `timestamp`, `text`. Total output is capped at 100KB.
+- `session` (required): session name, ID, or partial match.
+- `tool`: `claude`, `cline`, `gemini`, `cursor`, or `copilot`; use the value from search to disambiguate IDs.
+- `around`: exact `messageRef` from search or a previous context page.
+- `before` / `after`: surrounding messages (defaults 3 / 6, each 0–20); require `around`.
+- `offset`: start inside the referenced message; requires `around` and `before: 0`. Use a search hit's `matchOffset` to reach a match deep in a long message.
+- `cursor`: `nextCursor` or `previousCursor` from a previous response; cannot be combined with `around`, `before`, `after`, or `offset`.
+- `limit`: maximum messages per page (default 20, maximum 50).
+- `maxChars`: shared text budget (default 12,000; range 256–50,000), excluding JSON metadata. Character offsets use JavaScript UTF-16 units, not tokens or bytes.
+
+**Returns:** an object with `sessionId`, `tool`, `revision`, `scope`, `messages`, and `page`. Each message has a `messageRef`, index, role, timestamp where available, text, character offsets, original character count, and `partial` flag. JSON is always serialized intact; long messages are split into recoverable fragments.
+
+`page.complete` means this response contains the entire parsed conversation text. `windowComplete` means the requested window was delivered; it does **not** mean the conversation is complete. `hasEarlier`, `hasLater`, and continuation cursors identify omitted history. `anchorIncluded` reports whether the budget reached the requested message. If not, reopen it with `before: 0`.
+
+`nextCursor` resumes at the first unread character, including within a long message. It finishes an interrupted window before continuing into later history. `previousCursor` opens earlier messages; if they need multiple pages, follow their `nextCursor` to finish them. `omittedPrefixChars` identifies text before a fragment; reopen that message with `around`, `before: 0`, `after: 0` to retrieve its prefix.
+
+References are scoped to tool and session and include message identity and a content hash. They survive appended messages, but an edited/redacted message (or a changed adapter-generated identity) requires a new search. Cursors are bound to the parsed conversation revision and must be restarted if that conversation changes. Missing or changed references return an error rather than silently selecting another message.
+
+Example workflow:
+
+```json
+{"session":"SESSION_ID","tool":"claude","around":"MESSAGE_REF","before":1,"after":3,"maxChars":6000}
+```
+
+Then pass the returned `page.nextCursor` as `cursor`, keeping the same session/tool. Retrieve only as much later evidence as the question needs. Dates record when something was said, not whether it is still correct.
+
+**Compatibility:** `conclear_context` previously returned an array; it now returns a page object. `conclear_search` previously returned an array; it now returns `{ matches, coverage }`. Update consumers to read `.messages` and `.matches`. The web UI's existing `/api/search` array and `/api/sessions/:id/conversation` preview responses remain unchanged. The bounded REST endpoint is `GET /api/sessions/:id/context`, with the same options as query parameters.
 
 ### conclear_files
 
@@ -1275,6 +1322,15 @@ Each backup also writes a `.meta.json` sidecar recording the original file path 
 - [Export](export.md) -- export sessions as markdown documents.
 
 For installing ConClear's MCP server (and Skill) into AI clients — a separate lifecycle from these data operations — see [Install into AI Clients](install.md).
+
+## Update check
+
+After CLI query commands, at web UI launch, and through the web version endpoint, ConClear checks whether a newer version is on npm and shows a one-line nudge (CLI: stderr; UI: a dismissable banner on Reclaim). This is the only network call ConClear makes: a version lookup for the `conclear` package against `registry.npmjs.org`, cached in `~/.conclear/update-check.json` for 24 hours. It sends nothing but the package name.
+
+- Disable with `CONCLEAR_NO_UPDATE_CHECK=1`.
+- Skipped automatically when `CI` is set.
+- Never runs for `conclear mcp` — nothing extraneous is written on the MCP transport.
+- Failures are silent: offline machines see no update-check errors. A stale-cache lookup can add up to 1.5 seconds; a cached version may still produce an update notice.
 
 ## Strip Images
 
@@ -1362,7 +1418,7 @@ A backup is always created before modification.
 
 ## File Recovery
 
-AI coding tools record every file they read, edit, or write during a session. ConClear indexes this data so you can recover previous versions of any file.
+ConClear extracts recorded file contents and edit fragments from supported AI session logs. Recovery depends on what the client recorded and what its adapter can extract; a listed version is not necessarily a complete file.
 
 ## From the Web UI
 
@@ -1407,10 +1463,24 @@ The `version` parameter is 0-indexed. Omit it to get the latest version.
 | Operation | Description |
 |-----------|-------------|
 | `read` | File was read by the AI tool (content at time of read) |
-| `edit` | File was modified (content after edit) |
-| `write` | New file was created (full content) |
+| `edit` | Recorded edit content, which may be only a replacement fragment |
+| `write` | Recorded write content; inspect the entry before treating it as a complete file |
 
 Not all adapters support full file history. Currently, the Claude Code adapter provides the most complete file tracking.
+
+Inspect recovered content before using it. Shell-based edits and code suggested in messages are not systematically reconstructed. The latest recorded entry does not establish a complete, working project state.
+
+## Proposed background recorder — not implemented
+
+The proposed recorder would preserve project files independently of agent behavior or Git commits. Capture, storage, and integrity checks would use deterministic code, without AI. Conversation integration could help locate relevant recovery points, but would not decide whether file contents are saved.
+
+The design direction is an operating-system-managed service with automatic startup and restart, an initial project baseline, filesystem notifications for prompt capture, and periodic reconciliation to detect missed changes. Durable progress and visible last-successful-capture information would help expose interruptions. Optional hooks could request a completed checkpoint before supported agent operations or deployments.
+
+**This design does not promise to capture every intermediate version or prevent all code loss.** A file can be written and overwritten before the recorder reads it. Reconciliation can capture the current contents, but cannot recreate an overwritten state it never observed. Restarting after downtime cannot recover changes that disappeared during that downtime. A checkpoint before a shell command also does not capture every write inside that command.
+
+Stronger guarantees would require verified write interception or storage-level version preservation. Remote files would require coverage on the remote machine. A running service alone would not establish successful capture, and independently captured files would not necessarily form an atomic project snapshot.
+
+Before implementation is described as providing recovery coverage, it should be tested against rapid writes, shell edits, deletion, renaming, crashes, and restarts, with byte-for-byte restoration checks. Documentation and status reporting should distinguish captured recovery points from detected gaps and unsupported locations. No background recorder or automatic recovery protection is included in the current release.
 
 ## Secret Scanning & Redact
 
@@ -1670,7 +1740,7 @@ Cursor stores conversation data in a SQLite database (`state.vscdb`) within its 
 - Session listing from database records
 - Image preview, strip, and restore
 - Conversation replay (including structured tool calls — `toolFormerData.name` + `rawArgs` + `result`)
-- SQLite-aware full-text search (`searchMessages`) via the cursor adapter's per-bubble query rather than the line-based default
+- Full-text search through the shared retrieval path, using the Cursor adapter's SQLite conversation parser; hits include references that resolve into bounded context
 - **Secret scanning** — walks every bubble's text + `toolFormerData.rawArgs` + `result` against the same pattern table the other adapters use
 - Backup of the database file before any mutation
 
@@ -1788,7 +1858,7 @@ ConClear scans the workspace storage directory for Copilot chat data files. Sess
 
 ## Architecture
 
-ConClear is a full-stack TypeScript application with three main components:
+ConClear is a full-stack TypeScript application with shared session-reading adapters and several entry points:
 
 ## Components
 
@@ -1802,35 +1872,37 @@ A local Express 5 server that:
 
 ### React Frontend (`src/client/`)
 
-A React 19 single-page application built with Vite. Key components:
+A React 19 single-page application built with Vite. `App.tsx` selects pages and coordinates session loading, scan results, navigation, and toasts.
 
-| Component | Purpose |
-|-----------|---------|
-| `SessionTable` | Session list with search and navigation |
-| `PaneLayout` | Split-pane layout manager |
-| `ImagePreview` | Image thumbnails and lightbox |
-| `TimelineView` | Chronological event log |
-| `ConversationView` | Chat message replay |
-| `FilesView` | File version browser with code viewer |
-| `DiskUsage` | Size visualization |
-| `Toolbar` | Tab switcher and actions |
-| `ContextMenu` | Right-click menu via Radix UI |
-| `ResizeMenu` | Target size selector for resize operations |
-| `ScanResults` | Secret scanning results display |
-| `BackupManager` | View and manage backups |
-| `ConfirmDialog` | Confirmation for destructive operations |
-| `HelpPanel` | Keyboard shortcuts and help |
-| `Toast` | Notification messages |
-| `SizeIndicator` | Visual size badges |
-| `HighlightText` | Search match highlighting |
+| Area | Purpose |
+|------|---------|
+| `pages/Overview.tsx` | Reclaim overview and update notifications |
+| `pages/Sessions.tsx`, `pages/sessions/` | Session browser, detail, images, chat, timeline, files, and security tabs |
+| `pages/Security.tsx`, `hooks/useScanCache.ts` | Shared scan results and redaction workflow |
+| `pages/Connect.tsx`, `hooks/useInstall.ts` | Client installation status and actions |
+| `pages/Backups.tsx` | Backup management |
+| `commands/CommandPalette.tsx` | Session and message search |
+| `hooks/useSessions.ts`, `hooks/useSessionDetail.ts` | Session list caching and detail requests |
+
+`src/client.legacy/` contains the previous frontend and is not the active application. Admin/Teams pages are also present but are not imported by the free build.
 
 ### CLI (`src/cli.ts`, `src/cli-query.ts`)
 
-Zero-dependency CLI that dispatches to query functions, the MCP server, the install lifecycle commands, or the web server. Query commands import the Claude adapter directly -- no server needed.
+The CLI dispatches to query functions, the MCP server, installation commands, or the web server. Query handlers live in `src/cli-query/` and use the shared multi-tool adapter registry without starting a server.
 
 ### MCP Server (`src/mcp-server.ts`)
 
-MCP server using `@modelcontextprotocol/sdk`. Supports both stdio transport (default) and Streamable HTTP (`conclear mcp --http`). Registers five tools for AI agent access.
+MCP server using `@modelcontextprotocol/sdk`. Supports both stdio transport (default) and Streamable HTTP (`conclear mcp --http`). Registers seven read-only tools for AI agent access. Search and context return structured retrieval envelopes; see [MCP Server](mcp-server.md) for their contracts.
+
+### Shared retrieval (`src/server/context.ts`, `src/server/search.ts`)
+
+`src/server/adapters/registry.ts` owns the five session adapters used by REST, CLI, and MCP. Search and bounded context both request `getConversation(id, { fullText: true })`, then use the same message-reference construction. The UI conversation route keeps its preview behavior.
+
+- `searchConversations()` inspects listed sessions and returns `{ matches, coverage }`, reporting omitted matches and failed sources. The web search wrapper retains its array response.
+- `contextPage()` returns `{ messages, page, ... }`, applies a shared text budget, and produces cursors that resume within long messages.
+- References are scoped to the tool/session and derived from message identity and text. Cursors also include a parsed-conversation revision, preventing silent continuation into changed history.
+
+The retrieval layer does not persist another copy of the conversation or generate summaries. Search reads current source conversations on each request; metadata caches are separate from full-text retrieval. It does not implement automatic correction detection or active-conversation checkpoints.
 
 ### Install lifecycle (`src/install/`)
 
@@ -1887,7 +1959,7 @@ These let ConClear read session data from multiple AI coding tools. Each tool ge
 
 ## The Adapter Interface
 
-Every adapter must implement the `Adapter` interface defined in `src/server/adapters/types.ts`:
+Every adapter must implement the required methods of `Adapter` in `src/server/adapters/types.ts`. Optional capabilities such as file history, scanning, redaction, export, and resizing are also defined there and inspected by `capabilitiesOf()`. Required methods:
 
 ```typescript
 interface Adapter {
@@ -1895,6 +1967,7 @@ interface Adapter {
   detect(): Promise<boolean>;
   listSessions(): Promise<Session[]>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
+  getConversation(sessionId: string, options?: { fullText?: boolean }): Promise<ParsedConversation>;
   getImageData(sessionId: string, imageId: string): Promise<ImageData>;
   stripImages(sessionId: string, imageIds: string[]): Promise<{ backupPath: string; bytesReclaimed: number }>;
   stripAllImages(sessionId: string): Promise<{ backupPath: string; bytesReclaimed: number }>;
@@ -1935,13 +2008,19 @@ To add support for a new AI coding tool:
 1. Create a new directory under `src/server/adapters/<tool-name>/`.
 2. Create `parser.ts` with format-specific parsing functions.
 3. Create `index.ts` with a class implementing the `Adapter` interface.
-4. Register the adapter in `src/server/routes/sessions.ts` by adding it to the `adapters` array.
+4. Register the adapter in `src/server/adapters/registry.ts` by adding it to `ADAPTERS`, shared by REST, CLI, and MCP.
 
 The router iterates through all adapters for each request. If an adapter's `detect()` returns `true`, it participates in the session listing and can handle session-specific requests.
 
+## Agent retrieval
+
+`getConversation(sessionId, { fullText: true })` is the search/context read path. Return complete narrative text, including text accompanying a tool call, without tool payloads or preview truncation. Report unreadable/corrupt sources as errors rather than returning an apparently complete empty conversation. The default call remains the web UI preview path.
+
+`src/server/context.ts` assigns references from tool/session scope, adapter message identity, and full text. Prefer native message IDs; positional fallback IDs can change if messages are inserted or removed. The module applies response budgets and creates revision-bound continuation cursors. `src/server/search.ts` searches the same messages so every returned reference can be opened in context.
+
 ## Caching
 
-Adapters use mtime-based caching. Each session file's modification time is tracked, and only files that have changed since the last scan are re-parsed. This makes repeated scans fast even with hundreds of sessions.
+Adapters use modification-time checks to cache session metadata. Full-text search and bounded context read conversations from their sources on each request; the metadata cache is not a persistent search index. Large archives can therefore require more disk work even when the returned context is small.
 
 ## Backup Strategy
 
@@ -2148,4 +2227,65 @@ Right-click a session to access:
 ## Help Panel
 
 Press `?` or click the help button in the toolbar to open the help panel, which displays all available keyboard shortcuts.
+
+## Development and releases
+
+## Keep documentation with the change
+
+Update documentation in the same change as the behavior it describes:
+
+| Change | Documentation to update |
+|--------|-------------------------|
+| CLI options or JSON output | `docs/src/cli-commands.md`, `docs/src/cli-examples.md`, CLI help, and bundled `skill.md` |
+| MCP inputs, output, or retrieval behavior | `docs/src/mcp-server.md`, `skill.md`, and README examples |
+| Adapter behavior or capabilities | `docs/src/adapter-pattern.md`, the relevant tool page, and capability tables |
+| Architecture or implementation boundaries | `docs/src/architecture.md` |
+| User-facing changes and migration steps | `CHANGELOG.md` under **Unreleased**, README, and the relevant reference page |
+
+Add new documentation pages to `docs/src/SUMMARY.md`. It determines both the documentation navigation and the pages included in `llms.txt`. Edit the source pages, then regenerate the combined document:
+
+```bash
+npm run docs:generate
+npm run docs:check
+```
+
+Include the generated `llms.txt` in the same change. CI and the npm prepublish hook check that it matches its sources; the generator also fails if a referenced page cannot be read. This checks synchronization, not factual accuracy: review examples and capability claims against the implementation.
+
+## Pending retrieval migration
+
+The unreleased retrieval update changes CLI JSON and MCP response shapes:
+
+| Surface | Previous response | New response |
+|---------|-------------------|--------------|
+| CLI `search --json`, MCP `conclear_search` | Match array | `{ matches, coverage }` |
+| CLI `context --json`, MCP `conclear_context` | Message array | `{ sessionId, tool, revision, scope, messages, page }` |
+
+Change scripts such as `jq '.[] | .text'` on search output to `jq '.matches[] | .text'`. Context consumers should read `.messages` and retain `.page` to assess completeness and continue retrieval. A default context request returns up to the last 20 messages within a shared 12,000-character text budget; JSON metadata is additional. It no longer requests the whole conversation by default.
+
+The existing web `/api/search` array and `/api/sessions/:id/conversation` preview responses keep their shapes. The new bounded endpoint is `/api/sessions/:id/context`. See [MCP Server](mcp-server.md#conclear_context) for cursor rules, character offsets, omitted-history metadata, and reference validity.
+
+After installing the release, restart the ConClear web process and reconnect or restart MCP clients so they discover the updated tool schemas. For clients using the bundled skill, re-run `conclear install` for the desired clients to refresh their installed copy. Package upgrades alone do not rewrite previously copied skills.
+
+Automatic later-evidence discovery, active-conversation checkpoints, and project-belief maintenance are not part of this release. Retrieval provides original evidence and coverage information; timestamps and later messages do not certify correctness.
+
+## Before a release
+
+Keep changes under **Unreleased** until the release version and date are chosen. Update package metadata and lockfile root versions together, move the release notes into a versioned entry, and review any breaking response changes before publishing.
+
+Run the release checks from the project root:
+
+```bash
+npm run docs:check
+npm run build
+npm test
+git diff --check
+```
+
+The retrieval regression suite can also run independently:
+
+```bash
+npm test -- tests/retrieval
+```
+
+It covers message-reference validity, bounded continuation, all five conversation formats, CLI/MCP/REST behavior, and retrieval size on a synthetic claim-and-correction history. The size check measures serialized characters, not model token use or answer quality. Avoid documenting a targeted test run as a full-suite pass.
 
