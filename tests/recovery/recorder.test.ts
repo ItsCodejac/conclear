@@ -48,6 +48,65 @@ afterEach(async () => {
 });
 
 describe('experimental recovery recorder', () => {
+  it('reads only changed files while retaining the rest of the recovery inventory', async () => {
+    const { root, project, store } = await fixture();
+    await fs.writeFile(join(project, 'unchanged.ts'), 'keep');
+    await fs.writeFile(join(project, 'changed.ts'), 'before');
+    const recorder = await start(project, store);
+    const fullScan = recorder.status.lastFullScan;
+    await fs.writeFile(join(project, 'changed.ts'), 'after');
+    recorder.schedule('notification', 'changed.ts');
+    await eventually(async () => recorder.status.metrics.scope === 'changed-paths');
+    expect(recorder.status.metrics.bytesRead).toBe(5);
+    expect(recorder.status.lastFullScan).toBe(fullScan);
+    await restore(store, recorder.status.lastSnapshot, join(root, 'incremental'));
+    expect(await fs.readFile(join(root, 'incremental', 'unchanged.ts'), 'utf8')).toBe('keep');
+    expect(await fs.readFile(join(root, 'incremental', 'changed.ts'), 'utf8')).toBe('after');
+  });
+
+  it('keeps same-path notifications that arrive while an earlier batch is publishing', async () => {
+    const { root, project, store } = await fixture();
+    await fs.writeFile(join(project, 'code.ts'), 'baseline');
+    const recorder = await start(project, store);
+    let release: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let paused = false;
+    recorder.storageCheckpoint = async (phase, path) => {
+      if (!paused && phase === 'durable' && path.includes('/snapshots/')) {
+        paused = true;
+        await held;
+      }
+    };
+    try {
+      await fs.writeFile(join(project, 'code.ts'), 'first');
+      recorder.schedule('notification', 'code.ts');
+      await eventually(async () => paused);
+      await fs.writeFile(join(project, 'code.ts'), 'second');
+      recorder.schedule('notification', 'code.ts');
+    } finally { release!(); }
+    await eventually(async () => (await snapshots(store)).length === 3);
+    await recorder.queue;
+    await restore(store, recorder.status.lastSnapshot, join(root, 'queued'));
+    expect(await fs.readFile(join(root, 'queued', 'code.ts'), 'utf8')).toBe('second');
+  });
+
+  it('replaces directory inventories and falls back to a full scan on unknown notifications', async () => {
+    const { root, project, store } = await fixture();
+    await fs.mkdir(join(project, 'dir'));
+    await fs.writeFile(join(project, 'dir', 'old.ts'), 'old');
+    const recorder = await start(project, store);
+    await fs.rename(join(project, 'dir'), join(project, 'renamed'));
+    recorder.schedule('notification', 'dir');
+    recorder.schedule('notification', 'renamed');
+    await eventually(async () => (await snapshots(store)).some(s => s.entries.some(e => e.path === 'renamed/old.ts') && !s.entries.some(e => e.path === 'dir/old.ts')));
+    await fs.writeFile(join(project, 'unannounced.ts'), 'missed');
+    recorder.schedule('notification');
+    await eventually(async () => (await snapshots(store)).some(s => s.scope === 'full-tree' && s.entries.some(e => e.path === 'unannounced.ts')));
+    await recorder.queue;
+    await restore(store, recorder.status.lastSnapshot, join(root, 'directories'));
+    expect(await fs.readdir(join(root, 'directories'))).toEqual(['renamed', 'unannounced.ts']);
+  });
+
   it('restores exact uncommitted bytes across shell writes, rename and deletion', async () => {
     const { root, project, store } = await fixture();
     await fs.writeFile(join(project, 'code.ts'), 'original\n');

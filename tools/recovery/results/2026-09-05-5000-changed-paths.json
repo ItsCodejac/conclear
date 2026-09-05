@@ -1,0 +1,171 @@
+{
+  "environment": {
+    "node": "v26.4.0",
+    "platform": "darwin",
+    "release": "24.6.0"
+  },
+  "fileCount": 5000,
+  "fileBytes": 16384,
+  "phases": [
+    {
+      "name": "paced-concurrent-writes",
+      "rounds": 80,
+      "delay": 20,
+      "completedWrites": 160,
+      "capturedVersions": 20,
+      "missedVersions": 140,
+      "perWriter": [
+        {
+          "file": "paced-concurrent-writes-inplace.ts",
+          "completed": 80,
+          "captured": 10
+        },
+        {
+          "file": "paced-concurrent-writes-rename.ts",
+          "completed": 80,
+          "captured": 10
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 40,
+        "p95": 1370,
+        "max": 1410
+      },
+      "elapsedMs": 3635.506499999996,
+      "cpu": {
+        "user": 762237,
+        "system": 869328
+      },
+      "successfulScans": 16,
+      "failedScans": 2,
+      "scanP95Ms": 2568.700417,
+      "beforeStorage": {
+        "objects": {
+          "files": 5000,
+          "bytes": 81920000
+        },
+        "snapshots": {
+          "files": 1,
+          "bytes": 620339
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 5021,
+          "bytes": 82264064
+        },
+        "snapshots": {
+          "files": 11,
+          "bytes": 6826697
+        }
+      }
+    },
+    {
+      "name": "burst-concurrent-writes",
+      "rounds": 200,
+      "delay": 0,
+      "completedWrites": 400,
+      "capturedVersions": 2,
+      "missedVersions": 398,
+      "perWriter": [
+        {
+          "file": "burst-concurrent-writes-inplace.ts",
+          "completed": 200,
+          "captured": 1
+        },
+        {
+          "file": "burst-concurrent-writes-rename.ts",
+          "completed": 200,
+          "captured": 1
+        }
+      ],
+      "captureDelayMs": {
+        "p50": 1500,
+        "p95": 1532,
+        "max": 1532
+      },
+      "elapsedMs": 1810.3974170000001,
+      "cpu": {
+        "user": 861880,
+        "system": 845860
+      },
+      "successfulScans": 2,
+      "failedScans": 0,
+      "scanP95Ms": 1106.9184590000004,
+      "beforeStorage": {
+        "objects": {
+          "files": 5021,
+          "bytes": 82264064
+        },
+        "snapshots": {
+          "files": 11,
+          "bytes": 6826697
+        }
+      },
+      "afterStorage": {
+        "objects": {
+          "files": 5023,
+          "bytes": 82296832
+        },
+        "snapshots": {
+          "files": 12,
+          "bytes": 7447620
+        }
+      }
+    }
+  ],
+  "baseline": {
+    "elapsedMs": 44917.397375,
+    "cpu": {
+      "user": 2531157,
+      "system": 4173632
+    },
+    "metrics": {
+      "scope": "full-tree",
+      "durationMs": 44880.98645800001,
+      "bytesRead": 81920000,
+      "newObjectBytes": 81920000,
+      "files": 5000
+    }
+  },
+  "restoration": {
+    "baselineFilesVerified": 5000,
+    "finalFilesVerified": 4904,
+    "exactMatch": true
+  },
+  "storage": {
+    "objects": {
+      "files": 5023,
+      "bytes": 82296832
+    },
+    "snapshots": {
+      "files": 13,
+      "bytes": 8056747
+    }
+  },
+  "peakSampledRssBytes": 213565440,
+  "scanFailures": [
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 23.67170900000201,
+      "error": "ENOENT: no such file or directory, lstat '<fixture>/project/paced-concurrent-writes-rename.ts.pending'"
+    },
+    {
+      "ok": false,
+      "reason": "notification",
+      "durationMs": 22.51270800000202,
+      "error": "File changed during read: paced-concurrent-writes-rename.ts"
+    }
+  ],
+  "persistedFailureCount": 2,
+  "limits": [
+    "Synthetic local workload; one run, not a real-world miss rate.",
+    "CPU measures this harness and recorder, excluding writer children; microseconds.",
+    "Capture delay covers captured versions only, from write completion to manifest publication; negative scheduling differences clamp to zero.",
+    "RSS includes harness; 25ms sampling may miss peaks. Process crashes are not power-loss tests."
+  ],
+  "runDate": "2026-09-05",
+  "implementation": "changed-path capture with serialized full reconciliation",
+  "command": "node tools/recovery/stress.mjs 5000 16384"
+}

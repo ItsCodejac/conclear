@@ -15,6 +15,10 @@ const recorder = await new Recorder(process.argv[2], process.argv[3], {
 process.send({ event: 'ready', snapshot: recorder.status.lastSnapshot });
 process.on('message', async target => {
   armed = target;
-  try { await recorder.capture('crash-injection'); process.send({ event: 'unexpected-completion' }); }
+  try {
+    if (target.targeted) await recorder.scan('notification', ['code.ts']);
+    else await recorder.capture('crash-injection');
+    process.send({ event: 'unexpected-completion' });
+  }
   catch (error) { process.send({ event: 'error', message: error.message }); }
 });

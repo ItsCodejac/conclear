@@ -52,10 +52,10 @@ try {
     },
   });
   const scan = recorder.scan.bind(recorder);
-  recorder.scan = async reason => {
+  recorder.scan = async (reason, paths) => {
     const start = performance.now();
     try {
-      const result = await scan(reason);
+      const result = await scan(reason, paths);
       scans.push({ ok: true, reason, ...recorder.status.metrics });
       return result;
     } catch (error) {

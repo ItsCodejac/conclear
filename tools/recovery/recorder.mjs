@@ -38,6 +38,8 @@ export class Recorder {
     // Test instrumentation only; no CLI flag, environment trigger, or AI hook.
     this.storageCheckpoint = storageCheckpoint;
     this.queue = Promise.resolve();
+    this.dirty = new Set();
+    this.fullScanPending = false;
     this.status = { state: 'starting', watcher: 'off', lastSuccessfulScan: null, lastSnapshot: null, failedScanCount: 0, recentFailures: [] };
   }
 
@@ -90,7 +92,7 @@ export class Recorder {
       } : null;
       if (this.notifications) {
         try {
-          this.watcher = watch(this.project, { recursive: true }, () => this.schedule('notification'));
+          this.watcher = watch(this.project, { recursive: true }, (_event, filename) => this.schedule('notification', filename));
           this.status.watcher = 'active';
           this.watcher.on('error', error => {
             this.status.watcher = 'failed';
@@ -104,16 +106,41 @@ export class Recorder {
         }
       }
       await this.capture('baseline');
+      this.ready = true;
+      this.drain();
       this.timer = setInterval(() => this.schedule('reconciliation'), this.intervalMs);
       return this;
     } catch (error) { await this.stop(); throw error; }
   }
 
-  schedule(reason) {
-    if (this.stopping || this.scheduled) return;
+  schedule(reason, filename) {
+    if (this.stopping) return;
+    const name = filename?.toString();
+    if (reason !== 'notification' || !name || isAbsolute(name) || name.split(/[\\/]/).some(part => !part || part === '.' || part === '..')) {
+      this.fullScanPending = true;
+    } else if (!name.split(sep).some(part => excluded.has(part))) {
+      this.dirty.add(name);
+      if (this.dirty.size > 10000) { this.dirty.clear(); this.fullScanPending = true; }
+    }
+    this.drain();
+  }
+
+  drain() {
+    if (!this.ready || this.stopping || this.scheduled || (!this.fullScanPending && !this.dirty.size)) return;
     this.scheduled = true;
-    // One pending scan at a time; notifications are hints, not a write journal.
-    this.capture(reason).catch(() => {}).finally(() => { this.scheduled = false; });
+    const pending = this.queue.then(() => {
+      const paths = this.fullScanPending ? undefined : [...this.dirty];
+      this.fullScanPending = false;
+      this.dirty.clear();
+      return this.scan(paths ? 'notification' : 'reconciliation', paths);
+    });
+    this.queue = pending.catch(() => {});
+    pending.catch(() => {}).finally(() => {
+      this.scheduled = false;
+      // Events arriving during a scan survive for the next batch. Failed reads
+      // are retried by subsequent events or reconciliation, without a busy loop.
+      this.drain();
+    });
   }
 
   capture(reason = 'manual') {
@@ -123,7 +150,7 @@ export class Recorder {
     return pending;
   }
 
-  async scan(reason) {
+  async scan(reason, paths) {
     const began = performance.now();
     const startedAt = new Date().toISOString();
     const entries = [];
@@ -131,16 +158,27 @@ export class Recorder {
     let bytesRead = 0;
     let newObjectBytes = 0;
     try {
+      const targeted = paths && this.inventory;
+      const changedRoots = targeted ? [...new Set(paths)].sort().filter((path, i, all) => !all.slice(0, i).some(parent => path.startsWith(parent + sep))) : null;
+      if (targeted) {
+        const retained = path => !changedRoots.some(root => path === root || path.startsWith(root + sep));
+        entries.push(...this.inventory.entries.filter(entry => retained(entry.path)));
+        skipped.push(...this.inventory.skipped.filter(entry => retained(entry.path)));
+      }
       const walk = async directory => {
         const names = (await fs.readdir(directory)).sort();
         for (const name of names) {
-          const path = join(directory, name);
+          await visit(join(directory, name));
+        }
+      };
+      const visit = async path => {
+          const name = path.split(sep).at(-1);
           const local = relative(this.project, path);
-          if (excluded.has(name)) { skipped.push({ path: local, reason: 'excluded' }); continue; }
+          if (excluded.has(name)) { skipped.push({ path: local, reason: 'excluded' }); return; }
           const info = await fs.lstat(path);
-          if (info.isDirectory()) { await walk(path); continue; }
-          if (!info.isFile()) { skipped.push({ path: local, reason: 'symlink-or-special-file' }); continue; }
-          if (info.size > 16 * 1024 * 1024) { skipped.push({ path: local, reason: 'over-16-MiB' }); continue; }
+          if (info.isDirectory()) { await walk(path); return; }
+          if (!info.isFile()) { skipped.push({ path: local, reason: 'symlink-or-special-file' }); return; }
+          if (info.size > 16 * 1024 * 1024) { skipped.push({ path: local, reason: 'over-16-MiB' }); return; }
           const file = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
           let data, after;
           try {
@@ -164,19 +202,42 @@ export class Recorder {
             newObjectBytes += data.length;
           }
           entries.push({ path: local, hash: digest, bytes: data.length, mode: after.mode & 0o777 });
-        }
       };
-      await walk(this.project);
+      if (targeted) {
+        for (const local of changedRoots) {
+          // Resolve ancestors without traversing a symlink introduced since the
+          // baseline. Reconciliation will account for the changed ancestor.
+          let parent = dirname(join(this.project, local));
+          while (parent !== this.project) {
+            if (!(await fs.lstat(parent)).isDirectory()) throw new Error(`Changed ancestor requires reconciliation: ${local}`);
+            parent = dirname(parent);
+          }
+          try { await visit(join(this.project, local)); }
+          catch (error) {
+            // Only absence of the target itself establishes removal. A missing
+            // descendant during traversal makes this batch fail conservatively.
+            if (error.code !== 'ENOENT') throw error;
+            const stillExists = await fs.lstat(join(this.project, local)).then(() => true, check => {
+              if (check.code !== 'ENOENT') throw check;
+              return false;
+            });
+            if (stillExists) throw error;
+          }
+        }
+      } else await walk(this.project);
+      entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+      skipped.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
       const fingerprint = hash(JSON.stringify({ entries, skipped }));
       let snapshot = null;
       if (fingerprint !== this.fingerprint) {
         const id = `${Date.now()}-${randomUUID()}`;
-        snapshot = { version: 1, id, project: this.project, startedAt, finishedAt: new Date().toISOString(), reason, atomic: false, entries, skipped };
+        snapshot = { version: 1, id, project: this.project, startedAt, finishedAt: new Date().toISOString(), reason, scope: targeted ? 'changed-paths' : 'full-tree', atomic: false, entries, skipped };
         await atomic(join(this.store, 'snapshots', `${id}.json`), JSON.stringify(snapshot), this.storageCheckpoint);
         this.status.lastSnapshot = id;
         this.fingerprint = fingerprint;
       }
-      this.status = { ...this.status, state: skipped.length || this.status.watcher === 'failed' ? 'limited' : 'observing', lastSuccessfulScan: new Date().toISOString(), lastError: null, skipped, metrics: { durationMs: performance.now() - began, bytesRead, newObjectBytes, files: entries.length } };
+      this.inventory = { entries, skipped };
+      this.status = { ...this.status, state: skipped.length || this.status.watcher === 'failed' ? 'limited' : 'observing', lastSuccessfulScan: new Date().toISOString(), lastFullScan: targeted ? this.status.lastFullScan : new Date().toISOString(), lastError: null, skipped, metrics: { scope: targeted ? 'changed-paths' : 'full-tree', durationMs: performance.now() - began, bytesRead, newObjectBytes, files: entries.length } };
       await atomic(join(this.store, 'status.json'), JSON.stringify(this.status));
       return snapshot;
     } catch (error) {

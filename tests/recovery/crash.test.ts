@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os';
 import { once } from 'node:events';
 import { Recorder, restore } from '../../tools/recovery/recorder.mjs';
 
-const cases = ['objects', 'snapshots'].flatMap(kind => ['opened', 'written', 'synced', 'renamed', 'durable'].map(phase => ({ kind, phase })));
+const cases = [false, true].flatMap(targeted => ['objects', 'snapshots'].flatMap(kind => ['opened', 'written', 'synced', 'renamed', 'durable'].map(phase => ({ kind, phase, targeted }))));
 
-it.each(cases)('restores published history after SIGKILL at $kind/$phase', async ({ kind, phase }) => {
+it.each(cases)('restores published history after SIGKILL at $kind/$phase (targeted=$targeted)', async ({ kind, phase, targeted }) => {
   const root = await fs.mkdtemp(join(tmpdir(), 'conclear-storage-crash-'));
   const project = join(root, 'project');
   const store = join(root, 'store');
@@ -21,7 +21,7 @@ it.each(cases)('restores published history after SIGKILL at $kind/$phase', async
     expect(ready.event).toBe('ready');
     await fs.writeFile(join(project, 'code.ts'), 'uncommitted replacement\n');
     const paused = once(child, 'message');
-    child.send({ kind, phase });
+    child.send({ kind, phase, targeted });
     expect((await paused)[0].event).toBe('paused');
     const ended = once(child, 'exit');
     child.kill('SIGKILL');
