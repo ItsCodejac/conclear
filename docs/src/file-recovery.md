@@ -52,7 +52,9 @@ Not all adapters support full file history. Currently, the Claude Code adapter p
 
 Inspect recovered content before using it. Shell-based edits and code suggested in messages are not systematically reconstructed. The latest recorded entry does not establish a complete, working project state.
 
-## Proposed background recorder — not implemented
+## Proposed background service — prototype only
+
+A standalone [developer recorder prototype](recovery-prototype.md) now exercises capture and recovery on disposable projects. The automatic background service described below is not implemented or enabled.
 
 The proposed recorder would preserve project files independently of agent behavior or Git commits. Capture, storage, and integrity checks would use deterministic code, without AI. Conversation integration could help locate relevant recovery points, but would not decide whether file contents are saved.
 

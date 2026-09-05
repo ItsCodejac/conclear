@@ -6,6 +6,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ### Added
 
+- Developer-only recovery recorder prototype with independent file observation, content-addressed recovery points, restoration to a new directory, and disposable recovery/failure tests. No background service is installed or enabled; intermediate versions can be missed.
 - Optional npm update notifications on CLI query/UI launch and the Reclaim page, with a 24-hour cache and environment opt-outs; MCP transport does not perform update checks.
 - Stable tool/session-scoped message references shared by search and context, with content hashes that reject changed messages.
 - Bounded context around search hits, character-offset retrieval, forward/backward cursors, and explicit completeness metadata across MCP, CLI, and a new REST context endpoint.
