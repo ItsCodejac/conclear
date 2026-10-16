@@ -4,13 +4,15 @@
  * fallback path for Claude Code and VS Code.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installMcpFile, uninstallMcpFile, statusMcpFile } from '../../src/install/mcp-file.js';
 
 const ENTRY = { command: 'conclear', args: ['mcp'] };
+const fixturePaths = vi.hoisted(() => ({ backupDir: '' }));
+vi.mock('../../src/install/paths.js', () => ({ PATHS: fixturePaths }));
 
 describe('mcp-file install', () => {
   let dir: string;
@@ -19,6 +21,7 @@ describe('mcp-file install', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'conclear-test-'));
     cfg = join(dir, 'config.json');
+    fixturePaths.backupDir = join(dir, 'backups');
   });
 
   afterEach(() => {
@@ -44,6 +47,11 @@ describe('mcp-file install', () => {
     expect(parsed.mcpServers.conclear).toEqual(ENTRY);
     expect(parsed.mcpServers.existing).toEqual({ command: 'other', args: [] });
     expect(parsed.preferences).toEqual({ theme: 'dark' });
+    const backups = readdirSync(fixturePaths.backupDir);
+    expect(backups).toHaveLength(1);
+    const original = JSON.parse(readFileSync(join(fixturePaths.backupDir, backups[0]), 'utf-8'));
+    expect(original.mcpServers.conclear).toBeUndefined();
+    expect(original.preferences).toEqual({ theme: 'dark' });
   });
 
   it('is idempotent — re-running install reports already-installed', () => {

@@ -4,13 +4,15 @@
  * edits via jsonc-parser do not destroy comments.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installMcpJsonc, uninstallMcpJsonc, statusMcpJsonc } from '../../src/install/jsonc-util.js';
 
 const ZED_ENTRY = { source: 'custom', command: 'conclear', args: ['mcp'] };
+const fixturePaths = vi.hoisted(() => ({ backupDir: '' }));
+vi.mock('../../src/install/paths.js', () => ({ PATHS: fixturePaths }));
 
 describe('jsonc-util install', () => {
   let dir: string;
@@ -19,6 +21,7 @@ describe('jsonc-util install', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'conclear-jsonc-test-'));
     cfg = join(dir, 'settings.json');
+    fixturePaths.backupDir = join(dir, 'backups');
   });
 
   afterEach(() => {

@@ -27,6 +27,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ### Fixed
 
+- Installer tests now keep their backups inside disposable fixtures, allowing the full suite to run without writing to the user's backup directory.
 - Lockfile root version metadata now matches package.json (0.4.3); dependency resolutions are unchanged.
 - Secret redaction now locates regex replacement offsets correctly for patterns with differing capture-group counts, keeping nearby-keyword checks aligned with the source text.
 - MCP server version is read from the package metadata instead of a hard-coded version.
