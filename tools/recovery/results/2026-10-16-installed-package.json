@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "at": "2026-10-16T13:01:51.430Z",
+  "artifact": "/tmp/conclear-0.5.0.tgz",
+  "fixture": "/var/folders/r8/hf2dcb9d34zgvvd7whq1r1f80000gn/T/conclear-installed-AiD56X",
+  "projectId": "79bffefbbce495738a63bc1c",
+  "service": "com.conclear.recovery.893dba9b62db",
+  "checks": [
+    "Packed CLI enrolls a project and installs its real login service",
+    "Capture continues after enrollment CLI exits; watcher and heartbeat are active",
+    "Actual observed uncommitted files survive overwrite/deletion and restore with verified bytes; original stays untouched",
+    "Default .env exclusion and durable pin are exercised",
+    "launchd restarts a SIGKILLed observer and the store is reacquired without manual lock cleanup",
+    "Pause, resume, and service stop preserve captured history and report status"
+  ]
+}

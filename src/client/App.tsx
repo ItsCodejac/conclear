@@ -12,6 +12,7 @@ import { Sessions } from './pages/Sessions';
 import { Security } from './pages/Security';
 import { Connect } from './pages/Connect';
 import { Backups } from './pages/Backups';
+import { Recovery } from './pages/Recovery';
 import { Settings } from './pages/Settings';
 import { Upgrade } from './pages/Upgrade';
 import { CommandPalette } from './commands/CommandPalette';
@@ -26,7 +27,7 @@ import { CLIENTS } from './data/install-mock';
  * reattach them.
  */
 
-type PageId = 'overview' | 'sessions' | 'security' | 'connect' | 'backups' | 'settings' | 'upgrade';
+type PageId = 'overview' | 'sessions' | 'security' | 'connect' | 'backups' | 'recovery' | 'settings' | 'upgrade';
 
 interface NavSpec { id: PageId; label: string; icon: Parameters<typeof Icon>[0]['name'] }
 const NAV: NavSpec[] = [
@@ -35,6 +36,7 @@ const NAV: NavSpec[] = [
   { id: 'security', label: 'Security', icon: 'shield' },
   { id: 'connect',  label: 'Connect',  icon: 'cpu' },
   { id: 'backups',  label: 'Backups',  icon: 'archive' },
+  { id: 'recovery', label: 'Recovery', icon: 'restore' },
 ];
 
 export function App() {
@@ -161,7 +163,7 @@ export function App() {
         </nav>
 
         <main className="main">
-          {loading && sessions.length === 0 ? (
+          {loading && sessions.length === 0 && page !== 'recovery' ? (
             <div className="page">
               <div className="empty-state">
                 <div className="es-ico"><Logo size={32} /></div>
@@ -175,6 +177,7 @@ export function App() {
               {page === 'security' && <Security sessions={sessions} scan={scan} onOpen={openSession} toast={toast} />}
               {page === 'connect'  && <Connect toast={toast} />}
               {page === 'backups'  && <Backups toast={toast} />}
+              {page === 'recovery' && <Recovery toast={toast} />}
               {page === 'settings' && <Settings toast={toast} onGoto={() => setPage('upgrade')} />}
               {page === 'upgrade'  && <Upgrade onBack={() => setPage('settings')} />}
             </>

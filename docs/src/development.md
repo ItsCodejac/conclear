@@ -40,7 +40,7 @@ Automatic later-evidence discovery, active-conversation checkpoints, and project
 
 ## Before a release
 
-The source-only recovery recorder has its own [limits and policy reference](recovery-prototype.md) and [meeting demo](meeting-demo.md). Changes to `tools/recovery/` must update those pages and run `npm test -- tests/recovery`; real filesystem-notification tests need an environment that permits watching. `npm run recovery:check` validates the disposable end-to-end demo. The recorder/demo is not part of the published package's `files` list or normal CLI/MCP commands.
+The shipped recovery engine lives in `src/recovery/`; `tools/recovery/` contains compatibility wrappers and validation harnesses. Changes must update [Independent Recovery](recovery.md), the [engine limits](recovery-prototype.md), and [meeting demo](meeting-demo.md). Run `npm test -- tests/recovery`, the normal build, frontend type checking, docs checks, and packed-artifact validation. Native watcher and loopback checks require an environment that permits them. `node tools/recovery/installed-check.mjs /tmp/conclear-0.5.0.tgz` exercises a temporary actual macOS login service and removes that test service afterward.
 
 Installer tests override their backup destination into each test's temporary directory. A full `npm test` run should not create installer backups in the developer's real profile. Keep this isolation when adding installation tests.
 

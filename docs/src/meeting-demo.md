@@ -57,10 +57,18 @@ Future hooks could attach provenance or request a pre-command capture. They do n
 | Restore protected against concurrent expiration | Long restores can delay maintenance; this is a single-host coordinator |
 | Preservation by default; explicit expiration mode | Quotas can pause recording, leaving a visible coverage gap |
 | Bounded conversation retrieval in CLI/MCP | Automatic links between captured files and real conversations are not implemented |
-| Local standalone recording process | Login startup, crash supervision, remote coverage, and installer/UI integration are unfinished |
+| Packaged CLI, Recovery page, MCP health, and managed local observer; real macOS SIGKILL restart verified | Remote observation and automatic conversation attribution remain future work |
 
 The September large-fixture benchmarks established both improvements and substantial missed-version rates. Their exact counts are historical single runs, not a current production SLA. The current source-checkout demo is deliberately smaller and validates a specific recovery flow. Full details are in [Recovery recorder prototype](recovery-prototype.md).
 
 ## Release status
 
-The changes are under **Unreleased**. The package version remains 0.4.3. The prototype/demo is available from source and is not included in the published package surface. The default history policy now preserves published recovery points until an explicit expiration policy is chosen. The 512 MiB / 200-point defaults are experimental ceilings, not a recommended retention lifetime; use visible limits and user-selected pins rather than silent loss of old history.
+Version 0.5.0 is prepared locally with recovery runtime files in the npm archive. The installed-package macOS check exercises a temporary real launchd service, then removes that service while preserving fixture evidence. The GitHub source and npm registry publication are separate release steps; check their actual status before telling an audience to install the new version from npm.
+
+## Presentation text
+
+ConClear combines local conversation evidence with independent recovery of observed code. Agents can retrieve focused original messages with explicit completeness metadata, while an agent-independent background observer preserves enrolled project files even when edits happen through shell commands and no Git commit was made. Selected points can be pinned and restored into a separate directory with verified file hashes.
+
+Recovery is integrated into the CLI, web UI, local API, and read-only MCP tools. The macOS package workflow has been exercised through service startup, capture after the CLI exits, destructive fixture edits, verified restoration, and automatic restart after the observer was killed. Preservation is the default: recording pauses visibly when its limits are reached rather than silently deleting published history. Expiration requires an explicit policy.
+
+The boundary is precise: a watcher preserves states it observes; rapid intermediate writes can be missed, snapshots are not atomic across files, and captured bytes do not prove that a project worked. Automatic conversation-to-snapshot attribution and remote coverage are future work.

@@ -55,7 +55,7 @@ export function useInstall() {
     try {
       const res = await fetch(url, { method });
       const data = await res.json() as ActionResult;
-      return { ok: res.ok && data.ok !== false, ...data };
+      return { ...data, ok: res.ok && data.ok !== false };
     } catch (err) {
       return { ok: false, action: 'request failed', error: err instanceof Error ? err.message : String(err) };
     } finally {

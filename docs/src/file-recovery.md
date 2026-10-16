@@ -52,16 +52,8 @@ Not all adapters support full file history. Currently, the Claude Code adapter p
 
 Inspect recovered content before using it. Shell-based edits and code suggested in messages are not systematically reconstructed. The latest recorded entry does not establish a complete, working project state.
 
-## Proposed background service — prototype only
+## Independent background recovery
 
-A standalone [developer recorder prototype](recovery-prototype.md) now exercises capture and recovery on disposable projects. The automatic background service described below is not implemented or enabled.
+ConClear now includes independent local recovery in the installed package. Enroll a project in the **Recovery** page or with `conclear recovery add /absolute/project/path`. A managed observer preserves included file states independently of agent tools and Git commits. The CLI, local API, and read-only MCP expose health and captured points; the UI and CLI support pinning and verified restoration into a new directory.
 
-The proposed recorder would preserve project files independently of agent behavior or Git commits. Capture, storage, and integrity checks would use deterministic code, without AI. Conversation integration could help locate relevant recovery points, but would not decide whether file contents are saved.
-
-The design direction is an operating-system-managed service with automatic startup and restart, an initial project baseline, filesystem notifications for prompt capture, and periodic reconciliation to detect missed changes. Durable progress and visible last-successful-capture information would help expose interruptions. Optional hooks could request a completed checkpoint before supported agent operations or deployments.
-
-**This design does not promise to capture every intermediate version or prevent all code loss.** A file can be written and overwritten before the recorder reads it. Reconciliation can capture the current contents, but cannot recreate an overwritten state it never observed. Restarting after downtime cannot recover changes that disappeared during that downtime. A checkpoint before a shell command also does not capture every write inside that command.
-
-Stronger guarantees would require verified write interception or storage-level version preservation. Remote files would require coverage on the remote machine. A running service alone would not establish successful capture, and independently captured files would not necessarily form an atomic project snapshot.
-
-Before implementation is described as providing recovery coverage, it should be tested against rapid writes, shell edits, deletion, renaming, crashes, and restarts, with byte-for-byte restoration checks. Documentation and status reporting should distinguish captured recovery points from detected gaps and unsupported locations. No background recorder or automatic recovery protection is included in the current release.
+See [Independent Recovery](recovery.md) for startup, storage policy, exclusions, and service management, and [engine validation](recovery-prototype.md) for dated measurements. A watcher cannot promise every intermediate version, atomic project snapshots, or recovery of bytes it never observed. Conversation extraction and independent file recording are separate evidence sources; automatic attribution between them is future work.

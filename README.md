@@ -44,7 +44,7 @@ Supported session logs can contain earlier file contents and edit fragments. Ope
 
 ConClear ships with an MCP server. Install it into one click into Claude Code, Cursor, Windsurf, Antigravity, VS Code, Zed, Cline, Codex CLI, Continue, Kiro CLI, or Claude Desktop, and your agents can search, summarize, list files, scan secrets, and pull conversation context from any past session — without leaving the chat.
 
-![Connect — the 7 MCP tools and per-client install toggles](docs/screenshots/v0.4/04-connect.png)
+![Connect — the MCP tools and per-client install toggles](docs/screenshots/v0.4/04-connect.png)
 
 ### Browse and replay
 
@@ -97,6 +97,7 @@ Search returns compact message references with coverage metadata. Open a hit wit
 | `conclear_search` | Full-text search across every session |
 | `conclear_sessions` | List sessions, most recently active first |
 | `conclear_summary` | Session digest — files touched + key user messages |
+| `conclear_recovery` | Independent observer health, enrolled projects, and captured recovery points |
 | `conclear_context` | Bounded conversation pages with references and completeness metadata |
 | `conclear_files` | List every file a session touched, with version counts |
 | `conclear_file_content` | Fetch a specific file version from a session |
@@ -196,7 +197,7 @@ npm test           # run the test suite
 
 For documentation generation, retrieval migration notes, and release preparation, see [Development and releases](docs/src/development.md).
 
-The source checkout also contains an independent recovery experiment. Run `npm run recovery:demo` for a disposable browser lab, or `npm run recovery:check` for its terminal preflight. It demonstrates recovery of uncommitted shell-written code and a deleted file with no AI in capture. This prototype does not install a background service or guarantee every intermediate version. See the [demo walkthrough](docs/src/meeting-demo.md) and [recorder limits](docs/src/recovery-prototype.md).
+Independent recovery is integrated into the installed package, CLI, web UI, and read-only MCP tools. Enroll a project with `conclear recovery add /absolute/project/path` or the **Recovery** page. A user service captures local observed file states independently of agents and Git commits, with macOS login startup and crash restart, preservation-first limits, explicit expiration, pins, and hash-verified restoration into a new directory. See [Recovery](docs/src/recovery.md). The source-checkout lab remains available via `npm run recovery:demo`. No watcher guarantees every intermediate write or atomic project snapshots.
 
 ## Demo mode
 
@@ -210,7 +211,7 @@ This reroots every adapter at the bundled fixtures (`demo-fixtures/`) — small,
 
 ## Roadmap
 
-The free CLI, web UI, and MCP server stay free. Current work improves bounded conversation retrieval and develops independent recovery of observed, uncommitted code. The recorder prototype now has preservation-first storage, explicit expiration, protected points, and coordinated restoration. Next are broader real-project validation, automatic service operation, and conversation-linked recovery. Desktop assistance and metadata-only team reporting remain longer-term ideas.
+The free CLI, web UI, and MCP server stay free. Bounded conversation retrieval and independent file recovery are integrated. Next work targets broader sustained-operation measurements and explicit conversation attribution. Desktop assistance and metadata-only team reporting remain longer-term ideas.
 
 ## License
 

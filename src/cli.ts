@@ -46,6 +46,11 @@ INSTALL:
   conclear uninstall [flags as above]
   conclear doctor          Show install status across all clients
 
+RECOVERY:
+  conclear recovery add /path/to/project    Enroll and start automatic local recovery
+  conclear recovery status                 Show capture health and storage limits
+  conclear recovery --help                 Service, history, pin, and restore commands
+
 MCP SERVER:
   conclear mcp                 Start the MCP server (stdio transport, for AI agents)
   conclear mcp --http          Start with Streamable HTTP transport
@@ -120,6 +125,13 @@ async function applyDemoFlag(args: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+
+  if (args[0]?.toLowerCase() === 'recovery') {
+    await applyDemoFlag(args);
+    const { runRecovery } = await import('./recovery/cli.mjs');
+    await runRecovery(args.slice(1));
+    return;
+  }
 
   if (args.includes('--help') || args.includes('-h')) {
     printHelp();

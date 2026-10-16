@@ -132,3 +132,7 @@ Scan a session for leaked API keys, tokens, AWS credentials, GitHub PATs, .env d
 ## Tool Annotations
 
 All MCP tools are annotated as read-only, non-destructive, and idempotent. They do not modify session data. Redact and image-mutation operations are intentionally **not** exposed via MCP — destructive operations always go through the web UI for human confirmation.
+
+## conclear_recovery
+
+Read-only independent recovery health and captured points. With no `projectId`, returns observer liveness, heartbeat and enrolled projects with capture state, last-success timestamps, errors, quotas, and exclusions. With a project id from that result, returns `{ snapshots, total, nextOffset }`; `limit` defaults to 50 (1–200), `offset` defaults to 0. The tool does not enroll, start, pin, expire, or restore. Use explicit CLI/UI actions for changes. Recorded bytes and pin reasons do not certify working code. See [Independent Recovery](recovery.md).

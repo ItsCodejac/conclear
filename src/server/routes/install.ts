@@ -69,6 +69,7 @@ router.get('/mcp', (_req: Request, res: Response) => {
     stdioOnDemand: true,
     httpPort: 7331,
     tools: [
+      { name: 'conclear_recovery', desc: 'Independent recovery health, enrolled projects, and captured points.' },
       { name: 'conclear_search',       desc: 'Search messages across all sessions by text query.' },
       { name: 'conclear_sessions',     desc: 'List sessions, most recently active first.' },
       { name: 'conclear_summary',      desc: 'Session digest: files touched + key user messages.' },

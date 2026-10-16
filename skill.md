@@ -49,7 +49,7 @@ conclear context my-session --limit 10 --max-chars 6000 --json
 
 ## MCP tools
 
-The same surface is also available to agents through MCP — `conclear install` wires it into the supported clients. Tools: `conclear_sessions`, `conclear_search`, `conclear_summary`, `conclear_context`, `conclear_files`, `conclear_file_content`, `conclear_scan_secrets`. All read-only; redact is intentionally only exposed through the web UI so it always goes through human confirmation.
+The same surface is also available to agents through MCP — `conclear install` wires it into the supported clients. Tools: `conclear_recovery`, `conclear_sessions`, `conclear_search`, `conclear_summary`, `conclear_context`, `conclear_files`, `conclear_file_content`, `conclear_scan_secrets`. All read-only; redact is intentionally only exposed through the web UI so it always goes through human confirmation.
 
 ## Capability notes per tool
 
@@ -70,3 +70,5 @@ Search JSON returns `{ matches, coverage }`; context JSON returns `{ messages, p
 Check coverage before drawing conclusions. `windowComplete` is not whole-conversation completeness; `page.complete` is. A timestamp says when a statement was recorded, not whether it remains valid. Inspect later evidence when an answer depends on an earlier claim; do not assume a later message automatically disproves it. Cite message references for consequential claims.
 
 Defaults: last 20 messages, 12,000 text characters shared across the page. Long messages have offsets and a partial flag; continuation retrieves the rest. Changed conversations require fresh cursors; changed messages require fresh references. ConClear retrieves evidence and does not certify conclusions or maintain project beliefs.
+
+Independent recovery is available through `conclear recovery --help` and the Recovery page. Enrollment is explicit; macOS launchd/Linux systemd user services can keep capture independent of the agent. `conclear_recovery` reads observer health and paginated points. Pins and restores require explicit CLI/UI actions. Observed bytes are evidence, not proof of working code or complete capture.

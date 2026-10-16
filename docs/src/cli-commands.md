@@ -155,3 +155,7 @@ conclear doctor
 ```
 
 Output shows, per client: whether the client is detected, whether the MCP server is installed, whether the Skill is installed (for clients that support skills), and any notes (e.g. Windsurf's ~100-tool cap, Kiro's inherited Amazon Q config path).
+
+## Independent recovery
+
+Use `conclear recovery --help` for enrollment, observer lifecycle, storage settings, health, paginated recovery points, pinning, and restoration. `conclear recovery add /absolute/project/path` enrolls explicitly and starts the local user service. See [Independent Recovery](recovery.md).

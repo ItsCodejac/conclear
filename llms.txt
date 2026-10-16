@@ -157,7 +157,7 @@ If you discover a use we didn't anticipate, the smallest contribution is editing
 
 ## Getting Started
 
-ConClear runs as a local Node.js application. It requires Node.js 22 or later.
+ConClear runs as a local Node.js application. It requires Node.js 22.13 or later.
 
 There are three ways to use ConClear:
 
@@ -1041,6 +1041,10 @@ conclear doctor
 
 Output shows, per client: whether the client is detected, whether the MCP server is installed, whether the Skill is installed (for clients that support skills), and any notes (e.g. Windsurf's ~100-tool cap, Kiro's inherited Amazon Q config path).
 
+## Independent recovery
+
+Use `conclear recovery --help` for enrollment, observer lifecycle, storage settings, health, paginated recovery points, pinning, and restoration. `conclear recovery add /absolute/project/path` enrolls explicitly and starts the local user service. See [Independent Recovery](recovery.md).
+
 ## Examples
 
 ## Search for a past discussion
@@ -1299,6 +1303,10 @@ Scan a session for leaked API keys, tokens, AWS credentials, GitHub PATs, .env d
 
 All MCP tools are annotated as read-only, non-destructive, and idempotent. They do not modify session data. Redact and image-mutation operations are intentionally **not** exposed via MCP — destructive operations always go through the web UI for human confirmation.
 
+## conclear_recovery
+
+Read-only independent recovery health and captured points. With no `projectId`, returns observer liveness, heartbeat and enrolled projects with capture state, last-success timestamps, errors, quotas, and exclusions. With a project id from that result, returns `{ snapshots, total, nextOffset }`; `limit` defaults to 50 (1–200), `offset` defaults to 0. The tool does not enroll, start, pin, expire, or restore. Use explicit CLI/UI actions for changes. Recorded bytes and pin reasons do not certify working code. See [Independent Recovery](recovery.md).
+
 ## Operations
 
 ConClear provides several operations for managing session data. All destructive operations create a timestamped backup before modifying any files.
@@ -1470,19 +1478,74 @@ Not all adapters support full file history. Currently, the Claude Code adapter p
 
 Inspect recovered content before using it. Shell-based edits and code suggested in messages are not systematically reconstructed. The latest recorded entry does not establish a complete, working project state.
 
-## Proposed background service — prototype only
+## Independent background recovery
 
-A standalone [developer recorder prototype](recovery-prototype.md) now exercises capture and recovery on disposable projects. The automatic background service described below is not implemented or enabled.
+ConClear now includes independent local recovery in the installed package. Enroll a project in the **Recovery** page or with `conclear recovery add /absolute/project/path`. A managed observer preserves included file states independently of agent tools and Git commits. The CLI, local API, and read-only MCP expose health and captured points; the UI and CLI support pinning and verified restoration into a new directory.
 
-The proposed recorder would preserve project files independently of agent behavior or Git commits. Capture, storage, and integrity checks would use deterministic code, without AI. Conversation integration could help locate relevant recovery points, but would not decide whether file contents are saved.
+See [Independent Recovery](recovery.md) for startup, storage policy, exclusions, and service management, and [engine validation](recovery-prototype.md) for dated measurements. A watcher cannot promise every intermediate version, atomic project snapshots, or recovery of bytes it never observed. Conversation extraction and independent file recording are separate evidence sources; automatic attribution between them is future work.
 
-The design direction is an operating-system-managed service with automatic startup and restart, an initial project baseline, filesystem notifications for prompt capture, and periodic reconciliation to detect missed changes. Durable progress and visible last-successful-capture information would help expose interruptions. Optional hooks could request a completed checkpoint before supported agent operations or deployments.
+## Independent Recovery
 
-**This design does not promise to capture every intermediate version or prevent all code loss.** A file can be written and overwritten before the recorder reads it. Reconciliation can capture the current contents, but cannot recreate an overwritten state it never observed. Restarting after downtime cannot recover changes that disappeared during that downtime. A checkpoint before a shell command also does not capture every write inside that command.
+Recovery records observed files from explicitly enrolled local projects, independently of agents, their editing tools, and Git commits. It is included in the installed ConClear package. Requires Node.js 22.13 or later.
 
-Stronger guarantees would require verified write interception or storage-level version preservation. Remote files would require coverage on the remote machine. A running service alone would not establish successful capture, and independently captured files would not necessarily form an atomic project snapshot.
+## Start
 
-Before implementation is described as providing recovery coverage, it should be tested against rapid writes, shell edits, deletion, renaming, crashes, and restarts, with byte-for-byte restoration checks. Documentation and status reporting should distinguish captured recovery points from detected gaps and unsupported locations. No background recorder or automatic recovery protection is included in the current release.
+```bash
+conclear recovery add /absolute/project/path
+conclear recovery status
+```
+
+Enrollment installs and starts a per-user background service: launchd on macOS, systemd --user on Linux. It starts at user login and restarts after a process crash. No administrator service is installed. Linux requires a working user systemd session; Windows can use foreground operation. A failed service installation is reported explicitly and must not be interpreted as active capture.
+
+For foreground operation, use `add /path --no-service` followed by `conclear recovery run`. Closing that process stops capture. An installed observer keeps running when the CLI, browser, or agent closes. `CONCLEAR_HOME` overrides the default `~/.conclear` data directory; use the same value for all commands.
+
+The web UI **Recovery** page provides enrollment, service control, per-project capture health, policy settings, captured points, pinning, and restoration. Session `--demo` mode disables recovery management and does not enroll real projects. The read-only MCP tool `conclear_recovery` returns health, or paginated points when given a `projectId`.
+
+## Inspect and recover
+
+```bash
+conclear recovery list --json
+conclear recovery snapshots PROJECT_ID --limit 50 --offset 0 --json
+conclear recovery pin PROJECT_ID POINT_ID --reason "Reviewed working version"
+conclear recovery restore PROJECT_ID POINT_ID /new/recovered-directory
+conclear recovery unpin PROJECT_ID POINT_ID --reason "No longer needed"
+```
+
+The restore destination must not exist and must be outside the original project and recovery store. All referenced objects are hash-verified before restoration. The original workspace is not modified. A restored directory contains included regular files and basic permission bits; empty directories, ownership, timestamps, extended attributes, and symlink targets are not preserved.
+
+## Storage and coverage
+
+The default preserves published history and pauses new captures at a 512 MiB payload budget or 200 points. A busy project can reach 200 points quickly. Status and UI expose storage exhaustion; raise limits to resume. No notification is injected into model context, and a closed UI cannot notify the user. Inspect status before relying on coverage.
+
+```bash
+conclear recovery configure PROJECT_ID --max-bytes 1073741824 --keep 1000
+conclear recovery configure PROJECT_ID --retention expire
+conclear recovery configure PROJECT_ID --exclude .env,.env.local,build
+conclear recovery pause PROJECT_ID
+conclear recovery resume PROJECT_ID
+```
+
+Expiration is an explicit opt-in and can immediately delete older unpinned points. The earliest baseline, newest point, and pins remain protected. Lowering limits cannot force deletion of protected history. Pins require a reason; reasons and optional source references are declarations, not proof of correctness. Pausing or removing the service never deletes history.
+
+Always excluded: `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files over 16 MiB. Enrollment additionally excludes `.env` and `.env.local` by default. Additional exclusions are exact relative paths or subtrees, not glob patterns. `.gitignore` is not applied. All other included content is stored as bytes, without secret redaction or encryption. Stores live under `~/.conclear/recovery/stores/` with private filesystem permissions. The payload budget excludes metadata, lock databases, logs, filesystem overhead, and restored copies.
+
+## Service and health
+
+```bash
+conclear recovery service status
+conclear recovery service install    # install / repair current executable paths
+conclear recovery service start
+conclear recovery service stop       # stops until started again or next login
+conclear recovery service uninstall  # removes startup; history stays
+```
+
+Status combines process liveness and a fresh observer heartbeat with each project's capture state. It distinguishes offline, paused, starting, observing/limited, errors, and full storage. Full reconciliation has a separate timestamp from changed-path capture. Persisted failure counts and interruption details survive restart. A service running is not evidence that every project is capturing successfully. If Node or ConClear moves after an upgrade, run service install again to repair its executable paths.
+
+**No promise of complete capture:** filesystem notifications are hints. Rapid intermediate writes may disappear before observation, and reconciliation cannot recover overwritten bytes it never saw. Baseline capture takes time. No coverage exists while offline, paused, full, before enrollment, or on another machine. Points are observations made at different times across files, not atomic or certified working project states. Recovery reduces a specific failure mode; it does not replace source control or backups.
+
+## Validation
+
+The packed CLI has been exercised on macOS with a temporary actual login service: startup, continued observation after CLI exit, file overwrite/deletion, exclusion, pinning, hash-verified restoration, SIGKILL restart, pause/resume, stop, and uninstall. Linux service generation and command arguments have automated tests; Linux login-manager lifecycle is not represented by the macOS check. Engine tests cover crash boundaries, quota pauses, expiration, corruption, cross-process restoration, and notification capture. See [engine measurements](recovery-prototype.md) for dated workload evidence and remaining coverage limits.
 
 ## Secret Scanning & Redact
 
@@ -2272,7 +2335,7 @@ Automatic later-evidence discovery, active-conversation checkpoints, and project
 
 ## Before a release
 
-The source-only recovery recorder has its own [limits and policy reference](recovery-prototype.md) and [meeting demo](meeting-demo.md). Changes to `tools/recovery/` must update those pages and run `npm test -- tests/recovery`; real filesystem-notification tests need an environment that permits watching. `npm run recovery:check` validates the disposable end-to-end demo. The recorder/demo is not part of the published package's `files` list or normal CLI/MCP commands.
+The shipped recovery engine lives in `src/recovery/`; `tools/recovery/` contains compatibility wrappers and validation harnesses. Changes must update [Independent Recovery](recovery.md), the [engine limits](recovery-prototype.md), and [meeting demo](meeting-demo.md). Run `npm test -- tests/recovery`, the normal build, frontend type checking, docs checks, and packed-artifact validation. Native watcher and loopback checks require an environment that permits them. `node tools/recovery/installed-check.mjs /tmp/conclear-0.5.0.tgz` exercises a temporary actual macOS login service and removes that test service afterward.
 
 Installer tests override their backup destination into each test's temporary directory. A full `npm test` run should not create installer backups in the developer's real profile. Keep this isolation when adding installation tests.
 
@@ -2295,13 +2358,13 @@ npm test -- tests/retrieval
 
 It covers message-reference validity, bounded continuation, all five conversation formats, CLI/MCP/REST behavior, and retrieval size on a synthetic claim-and-correction history. The size check measures serialized characters, not model token use or answer quality. Avoid documenting a targeted test run as a full-suite pass.
 
-## Recovery recorder prototype
+## Recovery engine and validation
 
-This is a developer experiment in `tools/recovery/`, not an installed ConClear feature. It tests automatic observation while a standalone process is running. It does not start at login, restart itself, integrate with agent hooks, or link snapshots to conversations. Use disposable local projects for now.
+The recorder is shipped from `src/recovery/` and integrated into the installed CLI, web UI, MCP, and user service. See [Independent Recovery](recovery.md) for the product workflow. `tools/recovery/` contains compatibility entries, stress harnesses, and the disposable demonstration. Benchmark results below retain their original dates and limitations.
 
 ## Run and inspect
 
-From a source checkout with Node.js 22 or later:
+From a source checkout with Node.js 22.13 or later:
 
 ```bash
 # PROJECT must exist; STORE's parent must exist. Use separate directories.
@@ -2326,7 +2389,7 @@ node tools/recovery/cli.mjs unpin /tmp/example-recovery SNAPSHOT_ID --reason "No
 node tools/recovery/cli.mjs watch /tmp/example-project /tmp/example-recovery --retention expire --keep 200
 ```
 
-The watch command stays in the foreground. Stop it with Ctrl-C. It prints state changes, including `storage-full`, as JSON events in addition to persisting status. Nothing is automatically installed or enabled. The normal ConClear CLI, web UI, and MCP server do not start this recorder. For a disposable live demonstration, use `npm run recovery:demo` or the terminal preflight `npm run recovery:check`; see [Recovery meeting demo](meeting-demo.md).
+The developer watch command stays in the foreground. Stop it with Ctrl-C. For installed operation, `conclear recovery add /absolute/project/path` starts the managed observer; see [Independent Recovery](recovery.md). The disposable demonstration remains available via `npm run recovery:demo` or `npm run recovery:check`.
 
 ## What the experiment preserves
 
@@ -2344,9 +2407,9 @@ No AI, Git commits, or conversation parsing participates in capture. No commands
 
 **There is no promise to capture every intermediate version or prevent all code loss.** Multiple writes can occur before a scan reads a file. Notifications are hints, not a write journal. Reconciliation captures current contents but cannot recover overwritten contents it never observed. Snapshots are not atomic across files and are not certified working project states.
 
-The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. There is no independent health supervisor yet. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
+The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. The managed observer publishes an independent heartbeat and is supervised by launchd or systemd; product health rejects stale heartbeats. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
 
-The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, or encrypt snapshots. Included configuration files are copied as bytes, so use disposable fixtures. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
+The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, or encrypt snapshots. Included configuration files are copied as bytes, so review coverage before enrolling. Installed enrollment additionally excludes `.env` and `.env.local` by default and accepts explicit relative-path exclusions. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
 
 ## Storage budget and retention
 
@@ -2364,9 +2427,9 @@ Maintenance runs between outer scans: at startup, when the count exceeds its lim
 
 When a new payload cannot fit, status becomes `storage-full`, retains failure details, and records a retry time. Automatic retries back off for 30 seconds; a manual capture can retry sooner. Startup exits if it cannot establish a baseline. Status includes policy, reserved payload bytes, snapshot count, and the last maintenance result; protected IDs and removed counts describe that maintenance pass. An unchanged capture may succeed without needing space for a new snapshot. Errors are not proof of every missed write, and a physically full disk can also prevent status updates.
 
-Restoration, pin changes, listing, and cleanup share a single-host coordination gate. A restore holds it from manifest selection through copying, so expiration cannot remove the selected point midway. Recording can continue until it needs maintenance or reaches quota; a long restore can delay cleanup. The gate waits up to ten seconds for a live owner, recovers a demonstrably dead PID, and never steals ownership just because a timeout elapsed. PID reuse fails conservatively. A crash during the short `control-acquiring` guard can require manual inspection, like the existing writer-acquisition guard. Do not remove a guard while another process is acquiring it. Crash handling is not a guarantee against hardware failure, hostile store mutation, or distributed access. This prototype still installs no service.
+Restoration, pin changes, listing, and cleanup share a single-host SQLite transaction lock. Restore holds it through copying, preventing concurrent expiration of its selected point. Recording continues until it needs maintenance or reaches quota; long restores can delay cleanup. Lock contention waits up to ten seconds and fails explicitly. A separate lifetime writer lock allows one writer per store. The OS releases transaction locks on process exit, including SIGKILL; no stale acquisition guard needs manual removal. This is not a distributed lock or protection against hostile filesystem mutation. Remote machines require their own observer.
 
-Only one writer on one host may use a store. Dead-process locks can be reclaimed at startup; an ambiguous/live PID fails closed. A crash during lock acquisition can leave `acquiring-writer`, requiring manual inspection before removal. This is not a distributed lock. Concurrent hostile filesystem changes and power-loss durability have not been validated. Remote machines need their own coverage; the prototype does not observe remote writes.
+
 
 Filesystem notification behavior varies by platform and filesystem; see the [Node.js filesystem watch caveats](https://nodejs.org/api/fs.html#caveats). If watch setup fails, periodic scanning continues and status reports the limitation.
 
@@ -2489,9 +2552,9 @@ Preservation defaults, durable pins, and coordinated restoration are now impleme
 
 A fresh 60-second run on 2026-10-16 exercised the coordinated cleanup/restore path with explicit expiration: 576 writes, three restart cycles, 36 retained-snapshot restoration checks, and 1,833 file checks all completed. Peak sampled payload was 112,148 bytes against a 262,144-byte budget; one capture failure remained visible. The raw report is `tools/recovery/results/2026-10-16-coordinated-60s.json`. This small fixture does not establish a long-duration memory or reliability guarantee and does not measure general capture coverage.
 
-Before a real-project trial, broaden sustained-operation testing beyond the short fixture, including physical storage failures and long restores. Set an explicit coverage/exclusion policy for the chosen project. Baseline sync cost, acquisition-guard recovery, and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
+Before a real-project trial, broaden sustained-operation testing beyond the short fixture, including physical storage failures and long restores. Set an explicit coverage/exclusion policy for the chosen project. Baseline sync cost, and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
 
-Automatic service lifecycle and independent health reporting follow those checks. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The prototype remains developer-only.
+Automatic user-service lifecycle and independent health reporting are implemented; the packed macOS workflow has been exercised including SIGKILL restart. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The product integration is described in [Independent Recovery](recovery.md).
 
 ## ConClear meeting demo — 2026-10-16
 
@@ -2552,11 +2615,19 @@ Future hooks could attach provenance or request a pre-command capture. They do n
 | Restore protected against concurrent expiration | Long restores can delay maintenance; this is a single-host coordinator |
 | Preservation by default; explicit expiration mode | Quotas can pause recording, leaving a visible coverage gap |
 | Bounded conversation retrieval in CLI/MCP | Automatic links between captured files and real conversations are not implemented |
-| Local standalone recording process | Login startup, crash supervision, remote coverage, and installer/UI integration are unfinished |
+| Packaged CLI, Recovery page, MCP health, and managed local observer; real macOS SIGKILL restart verified | Remote observation and automatic conversation attribution remain future work |
 
 The September large-fixture benchmarks established both improvements and substantial missed-version rates. Their exact counts are historical single runs, not a current production SLA. The current source-checkout demo is deliberately smaller and validates a specific recovery flow. Full details are in [Recovery recorder prototype](recovery-prototype.md).
 
 ## Release status
 
-The changes are under **Unreleased**. The package version remains 0.4.3. The prototype/demo is available from source and is not included in the published package surface. The default history policy now preserves published recovery points until an explicit expiration policy is chosen. The 512 MiB / 200-point defaults are experimental ceilings, not a recommended retention lifetime; use visible limits and user-selected pins rather than silent loss of old history.
+Version 0.5.0 is prepared locally with recovery runtime files in the npm archive. The installed-package macOS check exercises a temporary real launchd service, then removes that service while preserving fixture evidence. The GitHub source and npm registry publication are separate release steps; check their actual status before telling an audience to install the new version from npm.
+
+## Presentation text
+
+ConClear combines local conversation evidence with independent recovery of observed code. Agents can retrieve focused original messages with explicit completeness metadata, while an agent-independent background observer preserves enrolled project files even when edits happen through shell commands and no Git commit was made. Selected points can be pinned and restored into a separate directory with verified file hashes.
+
+Recovery is integrated into the CLI, web UI, local API, and read-only MCP tools. The macOS package workflow has been exercised through service startup, capture after the CLI exits, destructive fixture edits, verified restoration, and automatic restart after the observer was killed. Preservation is the default: recording pauses visibly when its limits are reached rather than silently deleting published history. Expiration requires an explicit policy.
+
+The boundary is precise: a watcher preserves states it observes; rapid intermediate writes can be missed, snapshots are not atomic across files, and captured bytes do not prove that a project worked. Automatic conversation-to-snapshot attribution and remote coverage are future work.
 

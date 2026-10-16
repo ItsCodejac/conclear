@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import sessionRoutes from './routes/sessions.js';
 import installRoutes from './routes/install.js';
+import { recoveryRoutes } from './routes/recovery.js';
 import { getUpdateStatus, getCurrentVersion } from '../update-check.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,6 +15,7 @@ export const PORT = 3789;
 app.use(express.json());
 app.use('/api', sessionRoutes);
 app.use('/api/install', installRoutes);
+app.use('/api/recovery', recoveryRoutes);
 
 // Version + update availability. The registry lookup behind this is cached
 // for 24h in ~/.conclear and disabled by CONCLEAR_NO_UPDATE_CHECK / CI.
@@ -33,7 +35,7 @@ if (process.env.NODE_ENV === 'production') {
 
 export function startServer(): Promise<ReturnType<typeof app.listen>> {
   return new Promise((resolve) => {
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, '127.0.0.1', () => {
       console.log(`ConClear running on http://localhost:${PORT}`);
       resolve(server);
     });

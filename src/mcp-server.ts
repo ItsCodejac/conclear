@@ -46,6 +46,25 @@ const server = new McpServer({
   version: getCurrentVersion(),
 });
 
+server.registerTool('conclear_recovery', {
+  title: 'Recovery Status and Captured Points',
+  description: 'Read independent local recovery health and enrolled projects, or list captured file points for a project id. A running observer does not certify complete capture or working code. Use the ConClear UI or recovery CLI for explicit pinning and restoration.',
+  inputSchema: {
+    projectId: z.string().regex(/^[a-f0-9]{24}$/).optional(),
+    limit: z.number().int().min(1).max(200).default(50),
+    offset: z.number().int().min(0).default(0),
+  },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+}, async ({ projectId, limit, offset }) => {
+  try {
+    const { health, snapshots, isDemo } = await import('./recovery/projects.mjs');
+    const value = projectId && !isDemo() ? await snapshots(projectId, { limit, offset }) : await health();
+    return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
+  } catch (error) {
+    return { isError: true, content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }] };
+  }
+});
+
 // ── Tool: conclear_search ───────────────────────────────────────────────────
 
 server.registerTool(

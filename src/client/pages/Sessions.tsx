@@ -130,7 +130,7 @@ export function Sessions({ sessions, projectFilter, openId, onOpenId, toast }: P
           <div className="searchbox">
             <Icon name="search" size={15} />
             <input ref={inputRef} placeholder="Filter sessions…  ( / )" value={query} onChange={e => setQuery(e.target.value)} />
-            {query && <Icon name="close" size={14} style={{ cursor: 'pointer' }} onClick={() => setQuery('')} />}
+            {query && <button className="iconbtn" aria-label="Clear session filter" onClick={() => setQuery('')}><Icon name="close" size={14} /></button>}
           </div>
           <div className="sess-filterbar">
             {tools.map(t => (

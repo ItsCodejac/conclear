@@ -7,7 +7,8 @@
     "rootDir": "src",
     "declaration": false,
     "jsx": "preserve",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "allowJs": true
   },
-  "include": ["src/server/**/*", "src/cli.ts", "src/cli-query.ts", "src/mcp-server.ts"]
+  "include": ["src/server/**/*", "src/cli.ts", "src/cli-query.ts", "src/mcp-server.ts", "src/recovery/**/*"]
 }

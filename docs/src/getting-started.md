@@ -1,6 +1,6 @@
 # Getting Started
 
-ConClear runs as a local Node.js application. It requires Node.js 22 or later.
+ConClear runs as a local Node.js application. It requires Node.js 22.13 or later.
 
 There are three ways to use ConClear:
 

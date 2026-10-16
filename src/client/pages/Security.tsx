@@ -27,7 +27,7 @@ export function Security({ sessions, scan, onOpen, toast }: Props) {
         findings: scan.cache.results[id] ?? [],
       }))
       .filter(r => r.session)
-      .sort((a, b) => b.findings.length - a.findings.length) as Array<{ session: Session; findings: NonNullable<ReturnType<typeof scan.cache.results['']>> }>;
+      .sort((a, b) => b.findings.length - a.findings.length) as Array<{ session: Session; findings: NonNullable<typeof scan.cache.results['']> }>;
   }, [scan.sessionsWithFindings, scan.cache.results, sessionsById]);
 
   const total = scan.totalFindings;

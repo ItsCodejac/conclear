@@ -4,7 +4,14 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
 ### Added
+
+- Shipped independent recovery: normal CLI commands, Recovery page, local REST routes, and read-only MCP health/point listing. Explicit project enrollment starts a macOS launchd or Linux systemd user service; foreground operation remains available.
+- Capture health distinguishes fresh observer heartbeat, per-project capture, pauses, failures, and storage exhaustion. Policy and relative-path exclusions can be changed without removing history.
+- OS-released SQLite transaction locks replace stale PID acquisition guards; observer crashes no longer require manual lock cleanup.
+- Packed-artifact macOS service verification covers automatic enrollment/startup, continued capture after CLI exit, SIGKILL restart, pinning, exclusion, and hash-verified restoration after actual overwrite/deletion.
 
 - Source-checkout recovery lab with a live browser workflow and terminal preflight: automatically capture uncommitted shell-written code, pin it, overwrite/delete files, and restore a verified copy while recording continues.
 - Durable user/agent-declared pins with reasons and optional source references, CLI listing and explicit unpinning, and single-host coordination between restoration, pin updates, and expiration.
@@ -12,13 +19,15 @@ All notable changes to this project will be documented here. Format follows [Kee
 - Recovery prototype reconciliation now services pending changed paths between reads and preserves their newer observations. Independent compressed inventories reduce per-manifest storage; the reader accepts earlier plain manifests. Tests cover interleaved rewrite/deletion, compression corruption, and existing crash boundaries; measured tradeoffs are documented.
 - Recovery prototype changed-path capture with bounded pending notifications, full reconciliation fallback, explicit observation scope, and separate full-scan timestamps. Expanded crash tests cover both capture paths; workload comparisons document improved paced-write coverage and remaining burst/storage limits.
 - Recovery prototype stress harness and ten storage-boundary SIGKILL tests, with recorded 1,000/5,000-file measurements. Successful recovery does not hide prior persisted scan failures: status retains a count and the last ten failures across restart.
-- Developer-only recovery recorder prototype with independent file observation, content-addressed recovery points, restoration to a new directory, and disposable recovery/failure tests. No background service is installed or enabled; intermediate versions can be missed.
+- Independent file observation, content-addressed recovery points, restoration to a new directory, and disposable recovery/failure tests. Intermediate versions can be missed.
 - Optional npm update notifications on CLI query/UI launch and the Reclaim page, with a 24-hour cache and environment opt-outs; MCP transport does not perform update checks.
 - Stable tool/session-scoped message references shared by search and context, with content hashes that reject changed messages.
 - Bounded context around search hits, character-offset retrieval, forward/backward cursors, and explicit completeness metadata across MCP, CLI, and a new REST context endpoint.
 - Regression fixtures for all five conversation formats, long-message continuation, changed sources, and following an optimistic claim into a later correction.
 
 ### Changed
+
+- Minimum Node version is 22.13 for built-in SQLite locking. The web server binds to loopback; recovery routes reject cross-origin requests and untrusted Host headers.
 
 - Recovery prototype now preserves all published history by default and pauses at byte/point limits. Expiration requires `--retention expire`; pins survive either policy. Unchanged restarts reuse the last snapshot instead of consuming another point. Earlier configured stores without a mode upgrade to preservation.
 - **Breaking retrieval response change:** MCP search and CLI search JSON now return `{ matches, coverage }`; context returns `{ messages, page, ... }`. Context defaults to the latest 20 messages with a 12,000-character shared text budget. Web UI response shapes remain unchanged.

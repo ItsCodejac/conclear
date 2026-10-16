@@ -1,10 +1,10 @@
-# Recovery recorder prototype
+# Recovery engine and validation
 
-This is a developer experiment in `tools/recovery/`, not an installed ConClear feature. It tests automatic observation while a standalone process is running. It does not start at login, restart itself, integrate with agent hooks, or link snapshots to conversations. Use disposable local projects for now.
+The recorder is shipped from `src/recovery/` and integrated into the installed CLI, web UI, MCP, and user service. See [Independent Recovery](recovery.md) for the product workflow. `tools/recovery/` contains compatibility entries, stress harnesses, and the disposable demonstration. Benchmark results below retain their original dates and limitations.
 
 ## Run and inspect
 
-From a source checkout with Node.js 22 or later:
+From a source checkout with Node.js 22.13 or later:
 
 ```bash
 # PROJECT must exist; STORE's parent must exist. Use separate directories.
@@ -29,7 +29,7 @@ node tools/recovery/cli.mjs unpin /tmp/example-recovery SNAPSHOT_ID --reason "No
 node tools/recovery/cli.mjs watch /tmp/example-project /tmp/example-recovery --retention expire --keep 200
 ```
 
-The watch command stays in the foreground. Stop it with Ctrl-C. It prints state changes, including `storage-full`, as JSON events in addition to persisting status. Nothing is automatically installed or enabled. The normal ConClear CLI, web UI, and MCP server do not start this recorder. For a disposable live demonstration, use `npm run recovery:demo` or the terminal preflight `npm run recovery:check`; see [Recovery meeting demo](meeting-demo.md).
+The developer watch command stays in the foreground. Stop it with Ctrl-C. For installed operation, `conclear recovery add /absolute/project/path` starts the managed observer; see [Independent Recovery](recovery.md). The disposable demonstration remains available via `npm run recovery:demo` or `npm run recovery:check`.
 
 ## What the experiment preserves
 
@@ -47,9 +47,9 @@ No AI, Git commits, or conversation parsing participates in capture. No commands
 
 **There is no promise to capture every intermediate version or prevent all code loss.** Multiple writes can occur before a scan reads a file. Notifications are hints, not a write journal. Reconciliation captures current contents but cannot recover overwritten contents it never observed. Snapshots are not atomic across files and are not certified working project states.
 
-The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. There is no independent health supervisor yet. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
+The status file reports the last successful scan, last snapshot, watcher state, detected errors, exclusions, and scan measurements. Successful scans clear the current error but retain a cumulative failed-scan count and the last ten failures, including across restart when status was persisted. Restart records an interruption window; it cannot enumerate everything lost during downtime. A stale status file is not evidence that its process is still running. The managed observer publishes an independent heartbeat and is supervised by launchd or systemd; product health rejects stale heartbeats. Detected gaps do not represent all possible missed writes; a process killed before persisting status can lose the latest health update.
 
-The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, or encrypt snapshots. Included configuration files are copied as bytes, so use disposable fixtures. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
+The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, special files, and files larger than 16 MiB. It reports these omissions. It does not apply `.gitignore`, redact secrets, or encrypt snapshots. Included configuration files are copied as bytes, so review coverage before enrolling. Installed enrollment additionally excludes `.env` and `.env.local` by default and accepts explicit relative-path exclusions. Full reconciliation still reads the whole included tree, and every manifest still contains the full inventory despite compression; large-project costs remain under investigation.
 
 ## Storage budget and retention
 
@@ -67,9 +67,9 @@ Maintenance runs between outer scans: at startup, when the count exceeds its lim
 
 When a new payload cannot fit, status becomes `storage-full`, retains failure details, and records a retry time. Automatic retries back off for 30 seconds; a manual capture can retry sooner. Startup exits if it cannot establish a baseline. Status includes policy, reserved payload bytes, snapshot count, and the last maintenance result; protected IDs and removed counts describe that maintenance pass. An unchanged capture may succeed without needing space for a new snapshot. Errors are not proof of every missed write, and a physically full disk can also prevent status updates.
 
-Restoration, pin changes, listing, and cleanup share a single-host coordination gate. A restore holds it from manifest selection through copying, so expiration cannot remove the selected point midway. Recording can continue until it needs maintenance or reaches quota; a long restore can delay cleanup. The gate waits up to ten seconds for a live owner, recovers a demonstrably dead PID, and never steals ownership just because a timeout elapsed. PID reuse fails conservatively. A crash during the short `control-acquiring` guard can require manual inspection, like the existing writer-acquisition guard. Do not remove a guard while another process is acquiring it. Crash handling is not a guarantee against hardware failure, hostile store mutation, or distributed access. This prototype still installs no service.
+Restoration, pin changes, listing, and cleanup share a single-host SQLite transaction lock. Restore holds it through copying, preventing concurrent expiration of its selected point. Recording continues until it needs maintenance or reaches quota; long restores can delay cleanup. Lock contention waits up to ten seconds and fails explicitly. A separate lifetime writer lock allows one writer per store. The OS releases transaction locks on process exit, including SIGKILL; no stale acquisition guard needs manual removal. This is not a distributed lock or protection against hostile filesystem mutation. Remote machines require their own observer.
 
-Only one writer on one host may use a store. Dead-process locks can be reclaimed at startup; an ambiguous/live PID fails closed. A crash during lock acquisition can leave `acquiring-writer`, requiring manual inspection before removal. This is not a distributed lock. Concurrent hostile filesystem changes and power-loss durability have not been validated. Remote machines need their own coverage; the prototype does not observe remote writes.
+
 
 Filesystem notification behavior varies by platform and filesystem; see the [Node.js filesystem watch caveats](https://nodejs.org/api/fs.html#caveats). If watch setup fails, periodic scanning continues and status reports the limitation.
 
@@ -192,6 +192,6 @@ Preservation defaults, durable pins, and coordinated restoration are now impleme
 
 A fresh 60-second run on 2026-10-16 exercised the coordinated cleanup/restore path with explicit expiration: 576 writes, three restart cycles, 36 retained-snapshot restoration checks, and 1,833 file checks all completed. Peak sampled payload was 112,148 bytes against a 262,144-byte budget; one capture failure remained visible. The raw report is `tools/recovery/results/2026-10-16-coordinated-60s.json`. This small fixture does not establish a long-duration memory or reliability guarantee and does not measure general capture coverage.
 
-Before a real-project trial, broaden sustained-operation testing beyond the short fixture, including physical storage failures and long restores. Set an explicit coverage/exclusion policy for the chosen project. Baseline sync cost, acquisition-guard recovery, and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
+Before a real-project trial, broaden sustained-operation testing beyond the short fixture, including physical storage failures and long restores. Set an explicit coverage/exclusion policy for the chosen project. Baseline sync cost, and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
 
-Automatic service lifecycle and independent health reporting follow those checks. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The prototype remains developer-only.
+Automatic user-service lifecycle and independent health reporting are implemented; the packed macOS workflow has been exercised including SIGKILL restart. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The product integration is described in [Independent Recovery](recovery.md).
