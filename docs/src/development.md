@@ -40,6 +40,8 @@ Automatic later-evidence discovery, active-conversation checkpoints, and project
 
 ## Before a release
 
+The source-only recovery recorder has its own [limits and policy reference](recovery-prototype.md) and [meeting demo](meeting-demo.md). Changes to `tools/recovery/` must update those pages and run `npm test -- tests/recovery`; real filesystem-notification tests need an environment that permits watching. `npm run recovery:check` validates the disposable end-to-end demo. The recorder/demo is not part of the published package's `files` list or normal CLI/MCP commands.
+
 Keep changes under **Unreleased** until the release version and date are chosen. Update package metadata and lockfile root versions together, move the release notes into a versioned entry, and review any breaking response changes before publishing.
 
 Run the release checks from the project root:

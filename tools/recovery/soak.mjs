@@ -10,7 +10,7 @@ const seconds = Number(process.argv[2] ?? 60);
 if (!Number.isInteger(seconds) || seconds < 6 || seconds > 3600) throw new Error('Duration must be 6..3600 seconds');
 const root = await fs.mkdtemp(join(tmpdir(), 'conclear-soak-'));
 const project = join(root, 'project'), store = join(root, 'store');
-const options = { maxBytes: 256 * 1024, maxSnapshots: 12, intervalMs: 250 };
+const options = { maxBytes: 256 * 1024, maxSnapshots: 12, retentionMode: 'expire', intervalMs: 250 };
 const hash = data => createHash('sha256').update(data).digest('hex');
 const known = new Set([hash(Buffer.alloc(0))]);
 const report = { seconds, options, cycles: [], writes: 0, peakPayloadBytes: 0, peakRssBytes: 0, restoredSnapshots: 0, restoredFiles: 0 };

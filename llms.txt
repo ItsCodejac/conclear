@@ -2272,6 +2272,8 @@ Automatic later-evidence discovery, active-conversation checkpoints, and project
 
 ## Before a release
 
+The source-only recovery recorder has its own [limits and policy reference](recovery-prototype.md) and [meeting demo](meeting-demo.md). Changes to `tools/recovery/` must update those pages and run `npm test -- tests/recovery`; real filesystem-notification tests need an environment that permits watching. `npm run recovery:check` validates the disposable end-to-end demo. The recorder/demo is not part of the published package's `files` list or normal CLI/MCP commands.
+
 Keep changes under **Unreleased** until the release version and date are chosen. Update package metadata and lockfile root versions together, move the release notes into a versioned entry, and review any breaking response changes before publishing.
 
 Run the release checks from the project root:
@@ -2312,13 +2314,21 @@ ls /tmp/example-recovery/snapshots
 
 # Restore into a NEW directory outside both the project and recovery store.
 node tools/recovery/cli.mjs restore /tmp/example-recovery SNAPSHOT_ID /tmp/example-restored
+
+# Inspect points and protect one from any future expiration policy.
+node tools/recovery/cli.mjs list /tmp/example-recovery
+node tools/recovery/cli.mjs pin /tmp/example-recovery SNAPSHOT_ID --reason "Reviewed working checkout" --by user
+node tools/recovery/cli.mjs unpin /tmp/example-recovery SNAPSHOT_ID --reason "No longer needed"
+
+# Expiration is a deliberate opt-in, rather than the default.
+node tools/recovery/cli.mjs watch /tmp/example-project /tmp/example-recovery --retention expire --keep 200
 ```
 
-The watch command stays in the foreground. Stop it with Ctrl-C. Nothing is automatically installed or enabled. The normal ConClear CLI, web UI, and MCP server do not start this recorder.
+The watch command stays in the foreground. Stop it with Ctrl-C. It prints state changes, including `storage-full`, as JSON events in addition to persisting status. Nothing is automatically installed or enabled. The normal ConClear CLI, web UI, and MCP server do not start this recorder. For a disposable live demonstration, use `npm run recovery:demo` or the terminal preflight `npm run recovery:check`; see [Recovery meeting demo](meeting-demo.md).
 
 ## What the experiment preserves
 
-An initial scan records regular files, including uncommitted files. Recursive filesystem notifications identify paths to refresh. Changed-file batches read those files or directory subtrees and retain the rest of the last successful inventory. Notifications arriving during a batch remain in a pending set for the next batch. A one-second reconciliation timer requests a full scan even without notifications; missing or unsafe notification paths also request full scans. The pending set is capped at 10,000 paths, falling back to reconciliation on overflow. Inventory publication remains serialized, but a full walk can service one pending changed-path batch between file reads once at least 20 ms has elapsed. The full walk then preserves the newer observations from those batches instead of publishing its older reads for those paths. A restart creates a fresh baseline in the same project-bound store.
+An initial scan records regular files, including uncommitted files. Recursive filesystem notifications identify paths to refresh. Changed-file batches read those files or directory subtrees and retain the rest of the last successful inventory. Notifications arriving during a batch remain in a pending set for the next batch. A one-second reconciliation timer requests a full scan even without notifications; missing or unsafe notification paths also request full scans. The pending set is capped at 10,000 paths, falling back to reconciliation on overflow. Inventory publication remains serialized, but a full walk can service one pending changed-path batch between file reads once at least 20 ms has elapsed. The full walk then preserves the newer observations from those batches instead of publishing its older reads for those paths. A restart rescans the same project-bound store and reuses the latest snapshot when the inventory is unchanged, avoiding duplicate recovery points.
 
 Manifests identify their observation scope as `changed-paths` or `full-tree`. A changed-path recovery point combines newly observed files with previously observed inventory; it does not certify the current contents of unchanged paths. A full-tree point can incorporate the newer changed-path observations made during its walk. Status distinguishes `lastFullScan` from `lastSuccessfulScan`, which also advances after successful changed-path batches. Full reconciliation remains necessary for missing notifications and out-of-date inventory. The 20 ms check is not a latency guarantee: an individual file read, object sync, compression, or publication can take longer. Initial baseline capture does not yet yield to changed-path batches.
 
@@ -2338,17 +2348,21 @@ The prototype skips `.git`, `node_modules`, `dist`, `.DS_Store`, symlinks, speci
 
 ## Storage budget and retention
 
-New stores default to a 512 MiB payload budget and 200 retained recovery points. `--max-bytes` (at least 1,024) and `--keep` (at least 2) override these settings and persist them in `project.json`. Later starts reuse the saved settings. An older store without a retention policy refuses to start until at least one setting is supplied explicitly; the other uses its default. Reading or restoring an older store does not require migration. Enabling retention on an existing store can expire history at startup.
+**The default is preservation:** keep all published recovery points and pause new captures when the payload or point-count limit prevents another point. New stores use experimental ceilings of 512 MiB and 200 points. These ceilings are not a recommended history lifetime, and a busy session can reach 200 points quickly. CLI state-change events and persisted status expose that pause. A full recorder cannot preserve further writes until limits are increased or an expiration policy is explicitly selected.
 
-Retention always protects the earliest available baseline and newest point. It removes other points oldest first when above the count limit or when retained payload exceeds an 80% headroom target. New snapshot ordering values increase monotonically, including across restart, so a backward wall-clock change does not reverse retention order. These protected points are not certified working versions. There is not yet a command to pin additional known-good points. **Captured history can expire; this is not indefinite preservation.** A busy session can consume 200 points quickly. Count retention and a byte budget are prototype defaults to evaluate, not a recommended lifetime for valuable project history.
+`--max-bytes` (at least 1,024), `--keep` (at least 2), and `--retention preserve|expire` persist in `project.json`; later starts reuse the selected policy. Older configured stores without a mode upgrade conservatively to preservation. An unbounded store without any policy requires explicit limits or mode before management starts. Reading or restoring an older store does not require policy migration.
+
+`--retention expire` enables expiration of unprotected points, oldest first, above the count target or an 80% byte headroom target. It always protects the earliest available baseline, newest point, and user-selected pins. Enabling expiration can remove history at startup. New snapshot ordering values increase monotonically across restart, so a backward wall-clock change does not reverse retention order. If protected points alone prevent limits being satisfied, capture pauses rather than deleting them. Point-count targets can be temporarily exceeded in expiration mode until an outer scan completes or protected points are explicitly released; payload reservations still apply.
+
+Pins are durable metadata, with a reason, declared `user` or `agent` actor, timestamps, and optional `--source REF` pointer. Pinning verifies the snapshot's recorded objects. Re-pinning updates its annotation; `unpin` requires an explicit reason. Pin metadata holds up to 1,000 active pins and the last 100 pin/unpin events. Actor/source fields are caller declarations, not authenticated authorship, a complete audit log, or correctness certification. A reason such as “tests passed” remains an assessment. Automatic maintenance never unpins a point. The capture and storage paths use no AI to decide what is correct.
 
 The byte budget counts file objects, manifests, and temporary payload files at their logical byte sizes. New payload is reserved before writing, including temporary writes, so an oversized new capture fails instead of overrunning the budget. Metadata files, directory entries, filesystem allocation overhead, and restored copies are outside this budget. It is not a hard quota on the entire recovery directory. Lowering a limit below already-protected data does not delete that data to satisfy the limit; startup/capture fails until enough budget is supplied.
 
-Maintenance runs between outer scans: at startup, when the count exceeds its limit, after a budget failure, or after 30 seconds. It never reclaims objects staged by an in-progress cooperative scan. The count can transiently exceed its target until the outer scan completes; byte reservations still apply. Maintenance reads every published manifest, validates referenced object presence, and verifies retained object hashes before deleting history. Unexpected files, malformed manifests, missing references, or detected retained-object corruption stop pruning. Expired manifests are removed and the directory synced before unreferenced objects are removed, so a process crash during pruning does not deliberately strand retained references.
+Maintenance runs between outer scans: at startup, when the count exceeds its limit, after a budget failure, or after 30 seconds. It never reclaims objects staged by an in-progress cooperative scan. Maintenance reads every published manifest, validates referenced object presence and pins, and verifies retained object hashes before deleting history. Unexpected files, malformed manifests/pins, missing references, or detected retained-object corruption stop pruning. Expired manifests are removed and the directory synced before unreferenced objects are removed, so a process crash during pruning does not deliberately strand retained references. Preservation mode still reclaims abandoned temporary files and objects that no published point references; it never expires a published recovery point.
 
 When a new payload cannot fit, status becomes `storage-full`, retains failure details, and records a retry time. Automatic retries back off for 30 seconds; a manual capture can retry sooner. Startup exits if it cannot establish a baseline. Status includes policy, reserved payload bytes, snapshot count, and the last maintenance result; protected IDs and removed counts describe that maintenance pass. An unchanged capture may succeed without needing space for a new snapshot. Errors are not proof of every missed write, and a physically full disk can also prevent status updates.
 
-Pause the recorder before restoring an older expirable point: retention can otherwise remove it during the read. The first and newest points are protected during each maintenance pass, but an older selected point is not leased for an active restore. User-selected pins and coordinated restoration remain prerequisites for a comfortable real-project trial. This prototype still installs no service.
+Restoration, pin changes, listing, and cleanup share a single-host coordination gate. A restore holds it from manifest selection through copying, so expiration cannot remove the selected point midway. Recording can continue until it needs maintenance or reaches quota; a long restore can delay cleanup. The gate waits up to ten seconds for a live owner, recovers a demonstrably dead PID, and never steals ownership just because a timeout elapsed. PID reuse fails conservatively. A crash during the short `control-acquiring` guard can require manual inspection, like the existing writer-acquisition guard. Do not remove a guard while another process is acquiring it. Crash handling is not a guarantee against hardware failure, hostile store mutation, or distributed access. This prototype still installs no service.
 
 Only one writer on one host may use a store. Dead-process locks can be reclaimed at startup; an ambiguous/live PID fails closed. A crash during lock acquisition can leave `acquiring-writer`, requiring manual inspection before removal. This is not a distributed lock. Concurrent hostile filesystem changes and power-loss durability have not been validated. Remote machines need their own coverage; the prototype does not observe remote writes.
 
@@ -2467,7 +2481,80 @@ Two short sustained runs on 2026-09-05 used 50 initial 1 KiB files, repeated ato
 
 Repeated baselines count as separate restoration checks, not distinct snapshots. Samples can miss short-lived peaks; write reservations are the budget enforcement mechanism. In the one-minute run, RSS increased across cycles. The three-minute run used `--expose-gc` to diagnose this: live heap after each forced collection was approximately 5.5, 5.7, and 5.8 MB. That does not demonstrate an unbounded live-heap buildup in this fixture, but neither run establishes leak freedom or long-duration reliability. Forced collection is not part of ordinary recorder operation. CPU and memory measurements include the harness and its writer, and capture failures remain visible even after later success.
 
-Storage budgets, count retention, and a visible `storage-full` state are implemented in the prototype. Before a real-project trial, add user-selected protected points and coordinate restoration with expiration. Broaden sustained-operation testing beyond the short local fixtures, including physical storage failures. Baseline sync cost and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
+The September retention runs above exercised expiration; the harness now opts into that mode explicitly. They predate the October preservation-default, pinning, and coordination changes and are historical measurements, not a fresh sustained test of those changes.
+
+Preservation defaults, durable pins, and coordinated restoration are now implemented. October regressions cover point-limit pauses without history deletion, unchanged restarts, pins through expiry/restart, explicit unpinning, pin-metadata corruption, CLI operations, and a restore in a separate process while expiration waits. A disposable live demo additionally recovers a shell-written implementation and deleted configuration file with only a starter Git commit, verifying all three restored files and their fixture tests while recording remains active.
+
+A fresh 60-second run on 2026-10-16 exercised the coordinated cleanup/restore path with explicit expiration: 576 writes, three restart cycles, 36 retained-snapshot restoration checks, and 1,833 file checks all completed. Peak sampled payload was 112,148 bytes against a 262,144-byte budget; one capture failure remained visible. The raw report is `tools/recovery/results/2026-10-16-coordinated-60s.json`. This small fixture does not establish a long-duration memory or reliability guarantee and does not measure general capture coverage.
+
+Before a real-project trial, broaden sustained-operation testing beyond the short fixture, including physical storage failures and long restores. Set an explicit coverage/exclusion policy for the chosen project. Baseline sync cost, acquisition-guard recovery, and missed intermediate writes remain. Preserve the independent recovery and crash checks while addressing those limits; do not turn these measurements into a promise of complete capture.
 
 Automatic service lifecycle and independent health reporting follow those checks. Optional pre-operation hooks may preserve useful pre-command states but still cannot guarantee every internal write. Conversation linking follows a reliable recorder; stronger per-write guarantees require a different capture mechanism. The prototype remains developer-only.
+
+## ConClear meeting demo — 2026-10-16
+
+## The useful claim
+
+ConClear can preserve observed, uncommitted file states independently of an agent's editing tools, then restore a selected state with verifiable bytes. Conversation retrieval supplies original evidence with explicit coverage instead of an authoritative project-memory summary. These are implemented capabilities with different levels of integration: the recorder is still a source-checkout prototype, and automatic conversation-to-snapshot linking is future work.
+
+Suggested opening: “I lost a working implementation that an agent never committed. The conversations explained what happened, but that did not reliably preserve the exact files. ConClear now has an independent recorder and a recovery workflow. Here is a small example where the working code never enters Git history.”
+
+## Start the live demo
+
+Requirements: this source checkout, installed project dependencies, Node.js 22 or later, Git, a POSIX shell (`/bin/sh`, as on macOS/Linux), and local filesystem watching support.
+
+```bash
+# Preflight: creates a disposable Git fixture, runs the whole recovery flow,
+# prints evidence, stops its recorder, and removes its temporary files.
+npm run recovery:check
+
+# Live browser demo: open the loopback URL printed by this command.
+npm run recovery:demo
+```
+
+The server binds only to `127.0.0.1` on an available port. It does not open a browser automatically. Every write, deletion, Git operation, and restore stays in a fresh temporary fixture. Git has one starter commit; the working implementation is never committed. The four buttons operate on actual files and the actual recorder, not simulated timelines. Captures in this demo come from watching/reconciliation; the demonstration does not call a forced checkpoint after each edit.
+
+Ctrl-C stops the recorder and removes the disposable fixture. After completing a run, **Start a new disposable run** creates a fresh fixture for another rehearsal. Source files, configuration, tests, snapshot IDs, pin reasons, Git status, and test output are inspectable in the interface. The fixture has three Node test cases; passing them is a bounded demonstration, not certification of production correctness.
+
+## A two-minute walkthrough
+
+1. Start with the unimplemented checkout. The starter commit exists and the fixture checks fail.
+2. Click **Write & test**. A shell writes working code, the observer captures it, and all three fixture checks pass. Git still shows one commit.
+3. Click **Protect working point**. The captured point receives a durable pin with a reason and declared source. A pin preserves bytes; its reason is not a verified project belief.
+4. Click **Overwrite & delete**. A shell overwrites the implementation and deletes `pricing.json`. The fixture checks fail. There is still no Git commit containing the working code.
+5. Click **Restore captured state**. All three files are hash-checked and copied into a new directory. The recovered fixture passes its checks. The original workspace stays broken and the recorder continues observing it.
+
+Open the evidence panels to show the actual automatically captured point and the separate recovered directory. If the browser is inconvenient, use `npm run recovery:check` as the terminal fallback. It executes the same operations and prints their results.
+
+## What to discuss with Anthropic
+
+Claude Code already checkpoints its editing tools; its documented exclusions include shell-made changes and many changes outside the current session. Position independent observation as complementary coverage, with measured gaps. See [Claude Code checkpointing](https://code.claude.com/docs/en/checkpointing), checked 2026-10-16.
+
+The [hooks reference](https://code.claude.com/docs/en/hooks) already documents `PreToolUse` and `PostToolUse`. The integration questions are about stable attribution, latency, and coverage rather than whether hooks exist:
+
+- Which stable session/tool/message identifiers should external recovery points reference?
+- What information can identify shell-side file changes without relying on the model to describe them?
+- Could a checkpoint request confirm durable capture before a high-impact operation, with clear behavior when capture is unavailable?
+- How should a client report incomplete coverage without adding repetitive status output to model context?
+- What evidence would be most useful for evaluating recovery across concurrent sessions and external tools?
+
+Future hooks could attach provenance or request a pre-command capture. They do not make a watcher preserve every write inside a command. The independent recorder remains useful when an agent knows nothing about it.
+
+## Claims to keep precise
+
+| Demonstrated | Still limited or future |
+|--------------|-------------------------|
+| Exact restoration of recorded file bytes | Every intermediate filesystem state is not captured |
+| Shell-write and deletion recovery in the fixture | Project-wide snapshots are not atomic |
+| Durable user/agent-declared pins | Pin reasons and test claims are not correctness certification |
+| Restore protected against concurrent expiration | Long restores can delay maintenance; this is a single-host coordinator |
+| Preservation by default; explicit expiration mode | Quotas can pause recording, leaving a visible coverage gap |
+| Bounded conversation retrieval in CLI/MCP | Automatic links between captured files and real conversations are not implemented |
+| Local standalone recording process | Login startup, crash supervision, remote coverage, and installer/UI integration are unfinished |
+
+The September large-fixture benchmarks established both improvements and substantial missed-version rates. Their exact counts are historical single runs, not a current production SLA. The current source-checkout demo is deliberately smaller and validates a specific recovery flow. Full details are in [Recovery recorder prototype](recovery-prototype.md).
+
+## Release status
+
+The changes are under **Unreleased**. The package version remains 0.4.3. The prototype/demo is available from source and is not included in the published package surface. The default history policy now preserves published recovery points until an explicit expiration policy is chosen. The 512 MiB / 200-point defaults are experimental ceilings, not a recommended retention lifetime; use visible limits and user-selected pins rather than silent loss of old history.
 

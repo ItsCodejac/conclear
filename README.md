@@ -36,7 +36,7 @@ Pasted API keys, AWS keys, GitHub tokens, `.env` dumps, bearer tokens, database 
 
 ### Recover lost work
 
-Every file your agent read, wrote, or edited during a session is preserved with full content and version history. Open the session, browse versions, view with syntax highlighting, copy the code back out.
+Supported session logs can contain earlier file contents and edit fragments. Open the session, browse recorded versions, view with syntax highlighting, and copy the available code. Recovery depends on what the client recorded and the adapter can extract; an edit fragment is not necessarily a complete file. See [File Recovery](docs/src/file-recovery.md).
 
 ![Session detail — Files tab with per-file version history](docs/screenshots/v0.4/05-session-detail.png)
 
@@ -178,7 +178,7 @@ The one network call ConClear makes is an update check: a version lookup for the
 
 ## How it works
 
-ConClear runs a local Express server that reads session files via per-tool adapters (`src/server/adapters/<tool>/`) and a React + Vite frontend that presents the data. The adapter pattern means adding support for a new tool is a single file.
+ConClear runs a local Express server that reads session files via per-tool adapters (`src/server/adapters/<tool>/`) and a React + Vite frontend that presents the data. New tools implement the shared adapter interface.
 
 Every destructive operation (strip, resize, redact) writes a timestamped backup to `~/.conclear/backups/` first, with a sidecar metadata file recording the original path so the Backups page can restore it in one click. Backup integrity is verified by size after copy.
 
@@ -196,6 +196,8 @@ npm test           # run the test suite
 
 For documentation generation, retrieval migration notes, and release preparation, see [Development and releases](docs/src/development.md).
 
+The source checkout also contains an independent recovery experiment. Run `npm run recovery:demo` for a disposable browser lab, or `npm run recovery:check` for its terminal preflight. It demonstrates recovery of uncommitted shell-written code and a deleted file with no AI in capture. This prototype does not install a background service or guarantee every intermediate version. See the [demo walkthrough](docs/src/meeting-demo.md) and [recorder limits](docs/src/recovery-prototype.md).
+
 ## Demo mode
 
 If you want to try ConClear without your real session data — or want to use it for screenshots and demos:
@@ -208,7 +210,7 @@ This reroots every adapter at the bundled fixtures (`demo-fixtures/`) — small,
 
 ## Roadmap
 
-Free CLI + web UI + MCP server stays free. The next major release will add an optional desktop app with first-class AI assistance (BYOK Claude / OpenAI / local models), and a Teams tier that syncs only *metadata* (leak findings, install state, usage totals) — never conversation content — for organizations that want visibility without surveillance.
+The free CLI, web UI, and MCP server stay free. Current work improves bounded conversation retrieval and develops independent recovery of observed, uncommitted code. The recorder prototype now has preservation-first storage, explicit expiration, protected points, and coordinated restoration. Next are broader real-project validation, automatic service operation, and conversation-linked recovery. Desktop assistance and metadata-only team reporting remain longer-term ideas.
 
 ## License
 

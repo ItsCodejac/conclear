@@ -1,0 +1,117 @@
+{
+  "seconds": 60,
+  "options": {
+    "maxBytes": 262144,
+    "maxSnapshots": 12,
+    "retentionMode": "expire",
+    "intervalMs": 250
+  },
+  "cycles": [
+    {
+      "cycle": 0,
+      "retained": 12,
+      "failures": 0,
+      "storage": {
+        "at": "2026-10-16T11:33:33.092Z",
+        "payloadBytes": 103280,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1792150393016-2d1e1c0f-944f-44bf-818e-fe9bce895c74",
+          "1792150413047-e3a293c3-12c5-46bf-94f7-bb356a7513a8"
+        ],
+        "pinnedSnapshots": [],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "mode": "expire",
+        "reservedPayloadBytes": 103280
+      },
+      "memoryBeforeGc": {
+        "rss": 105971712,
+        "heapTotal": 37109760,
+        "heapUsed": 9338840,
+        "external": 9967492,
+        "arrayBuffers": 7114825
+      },
+      "memoryAfterGc": null
+    },
+    {
+      "cycle": 1,
+      "retained": 12,
+      "failures": 1,
+      "storage": {
+        "at": "2026-10-16T11:33:53.429Z",
+        "payloadBytes": 103280,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1792150393016-2d1e1c0f-944f-44bf-818e-fe9bce895c74",
+          "1792150433395-00a4c9d6-87c4-463d-b52e-9c9190985feb"
+        ],
+        "pinnedSnapshots": [],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "mode": "expire",
+        "reservedPayloadBytes": 103280
+      },
+      "memoryBeforeGc": {
+        "rss": 144080896,
+        "heapTotal": 64110592,
+        "heapUsed": 17163632,
+        "external": 25460657,
+        "arrayBuffers": 21620558
+      },
+      "memoryAfterGc": null
+    },
+    {
+      "cycle": 2,
+      "retained": 12,
+      "failures": 1,
+      "storage": {
+        "at": "2026-10-16T11:34:13.828Z",
+        "payloadBytes": 103280,
+        "snapshots": 12,
+        "removedSnapshots": 1,
+        "removedObjects": 1,
+        "protectedSnapshots": [
+          "1792150393016-2d1e1c0f-944f-44bf-818e-fe9bce895c74",
+          "1792150453787-0e260d2f-88fc-4079-ae7c-5162e8170ad6"
+        ],
+        "pinnedSnapshots": [],
+        "maxBytes": 262144,
+        "maxSnapshots": 12,
+        "mode": "expire",
+        "reservedPayloadBytes": 103280
+      },
+      "memoryBeforeGc": {
+        "rss": 122322944,
+        "heapTotal": 63848448,
+        "heapUsed": 14386048,
+        "external": 20466466,
+        "arrayBuffers": 16959615
+      },
+      "memoryAfterGc": null
+    }
+  ],
+  "writes": 576,
+  "peakPayloadBytes": 112148,
+  "peakRssBytes": 154419200,
+  "restoredSnapshots": 36,
+  "restoredFiles": 1833,
+  "elapsedMs": 61622.170958,
+  "cpu": {
+    "user": 6003057,
+    "system": 7311567
+  },
+  "limits": [
+    "Single local fixture run, not a long-duration reliability guarantee.",
+    "Payload counts objects, manifests and temporary payload files; excludes metadata and filesystem allocation overhead.",
+    "CPU/RSS include harness and writer; memory samples do not prove absence of leaks. With --expose-gc, forced GC after each cycle is diagnostic only.",
+    "Graceful stop/restart each cycle; separate tests inject SIGKILL at storage and retention boundaries."
+  ],
+  "runDate": "2026-10-16",
+  "command": "node tools/recovery/soak.mjs 60",
+  "node": "v26.8.2"
+}

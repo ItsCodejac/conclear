@@ -60,6 +60,8 @@
     "test:watch": "vitest",
     "docs:generate": "node tools/generate-llms-txt.mjs",
     "docs:check": "node tools/generate-llms-txt.mjs --check",
+    "recovery:demo": "node tools/recovery/demo.mjs",
+    "recovery:check": "node tools/recovery/demo.mjs --check",
     "prepublishOnly": "npm run docs:check && npm run build && npm test"
   },
   "dependencies": {

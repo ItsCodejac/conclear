@@ -1,0 +1,50 @@
+{
+  "result": "passed",
+  "commits": 1,
+  "evidence": [
+    {
+      "at": "2026-10-16T11:02:23.657Z",
+      "action": "baseline",
+      "snapshotId": "1792148543435-52225821-5a69-42a8-9315-faf4c5c685b4",
+      "testsPassed": false,
+      "gitCommits": 1
+    },
+    {
+      "at": "2026-10-16T11:02:23.929Z",
+      "action": "working-uncommitted",
+      "snapshotId": "1792148543743-f51898c7-e5b5-408f-b2f8-2485c86d9879",
+      "testsPassed": true,
+      "captureReason": "notification"
+    },
+    {
+      "at": "2026-10-16T11:02:23.984Z",
+      "action": "pinned",
+      "snapshotId": "1792148543743-f51898c7-e5b5-408f-b2f8-2485c86d9879",
+      "reason": "Three fixture tests passed; working implementation has no Git commit",
+      "actor": "user",
+      "sourceRef": "local-demo:working-uncommitted",
+      "createdAt": "2026-10-16T11:02:23.976Z",
+      "updatedAt": "2026-10-16T11:02:23.976Z"
+    },
+    {
+      "at": "2026-10-16T11:02:24.237Z",
+      "action": "shell-overwrite-and-delete",
+      "snapshotId": "1792148544068-1b110f50-a324-4de1-a723-2d1edd9ad4d0",
+      "testsPassed": false
+    },
+    {
+      "at": "2026-10-16T11:02:24.621Z",
+      "action": "restored-and-tested",
+      "snapshotId": "1792148543743-f51898c7-e5b5-408f-b2f8-2485c86d9879",
+      "files": 3,
+      "testsPassed": true,
+      "gitCommits": 1,
+      "recorderActive": true,
+      "originalStillBroken": true
+    }
+  ],
+  "limits": "Disposable local fixture. Three fixture tests; no complete-capture or production-readiness claim.",
+  "runDate": "2026-10-16",
+  "command": "npm run recovery:check",
+  "node": "v26.8.2"
+}

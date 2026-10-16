@@ -6,6 +6,8 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ### Added
 
+- Source-checkout recovery lab with a live browser workflow and terminal preflight: automatically capture uncommitted shell-written code, pin it, overwrite/delete files, and restore a verified copy while recording continues.
+- Durable user/agent-declared pins with reasons and optional source references, CLI listing and explicit unpinning, and single-host coordination between restoration, pin updates, and expiration.
 - Recovery prototype persisted payload budgets and count retention, protecting baseline/newest points with manifest-first garbage collection. Existing unbounded stores require explicit policy migration. Added `storage-full` backoff, retention/crash tests, and short sustained-operation diagnostics; automatic service installation remains deferred.
 - Recovery prototype reconciliation now services pending changed paths between reads and preserves their newer observations. Independent compressed inventories reduce per-manifest storage; the reader accepts earlier plain manifests. Tests cover interleaved rewrite/deletion, compression corruption, and existing crash boundaries; measured tradeoffs are documented.
 - Recovery prototype changed-path capture with bounded pending notifications, full reconciliation fallback, explicit observation scope, and separate full-scan timestamps. Expanded crash tests cover both capture paths; workload comparisons document improved paced-write coverage and remaining burst/storage limits.
@@ -18,12 +20,14 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ### Changed
 
+- Recovery prototype now preserves all published history by default and pauses at byte/point limits. Expiration requires `--retention expire`; pins survive either policy. Unchanged restarts reuse the last snapshot instead of consuming another point. Earlier configured stores without a mode upgrade to preservation.
 - **Breaking retrieval response change:** MCP search and CLI search JSON now return `{ matches, coverage }`; context returns `{ messages, page, ... }`. Context defaults to the latest 20 messages with a 12,000-character shared text budget. Web UI response shapes remain unchanged.
 - Search uses the same full-text adapter conversation path as context, including Gemini/Cline/Copilot messages previously missed by the JSONL fallback. Omitted matches and failed sources are reported to agents.
 - Full-text retrieval bypasses the adapters' 2,000-character UI previews. Corrupt retrieval sources raise errors instead of appearing complete.
 
 ### Fixed
 
+- Lockfile root version metadata now matches package.json (0.4.3); dependency resolutions are unchanged.
 - Secret redaction now locates regex replacement offsets correctly for patterns with differing capture-group counts, keeping nearby-keyword checks aligned with the source text.
 - MCP server version is read from the package metadata instead of a hard-coded version.
 

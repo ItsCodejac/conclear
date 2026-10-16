@@ -4,59 +4,29 @@ import * as fs from 'node:fs/promises';
 import { resolve, join, relative, dirname, isAbsolute, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { gzip, gunzip } from 'node:zlib';
+import { gzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { RecoveryStorage, policy } from './storage.mjs';
+import { atomic, readSnapshot } from './persistence.mjs';
+import { withStoreLock } from './control.mjs';
+export { readSnapshot } from './persistence.mjs';
 
 const compress = promisify(gzip);
-const decompress = promisify(gunzip);
-
-// Each manifest remains independently restorable; compression introduces no
-// dependency on a previous snapshot or a delta chain.
-export async function readSnapshot(path) {
-  const snapshot = JSON.parse(await fs.readFile(path, 'utf8'));
-  if (snapshot.inventoryEncoding !== undefined) {
-    if (snapshot.inventoryEncoding !== 'gzip-base64' || snapshot.entries !== undefined || snapshot.skipped !== undefined) throw new Error('Invalid inventory encoding');
-    const inventory = JSON.parse((await decompress(Buffer.from(snapshot.inventory, 'base64'), { maxOutputLength: 64 * 1024 * 1024 })).toString('utf8'));
-    snapshot.entries = inventory.entries;
-    snapshot.skipped = inventory.skipped;
-    delete snapshot.inventory;
-    delete snapshot.inventoryEncoding;
-  }
-  return snapshot;
-}
 
 const hash = data => createHash('sha256').update(data).digest('hex');
 const inside = (parent, child) => child === parent || child.startsWith(parent + sep);
 const excluded = new Set(['.git', 'node_modules', 'dist', '.DS_Store']);
 const message = error => error instanceof Error ? error.message : String(error);
 
-async function atomic(path, data, checkpoint) {
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  const handle = await fs.open(tmp, 'wx', 0o600);
-  try {
-    await checkpoint?.('opened', path);
-    await handle.writeFile(data);
-    await checkpoint?.('written', path);
-    await handle.sync();
-    await checkpoint?.('synced', path);
-  }
-  finally { await handle.close(); }
-  await fs.rename(tmp, path);
-  await checkpoint?.('renamed', path);
-  const dir = await fs.open(dirname(path), 'r');
-  try { await dir.sync(); } finally { await dir.close(); }
-  await checkpoint?.('durable', path);
-}
 
 export class Recorder {
-  constructor(project, store, { intervalMs = 1000, notifications = true, storageCheckpoint, maxBytes, maxSnapshots } = {}) {
+  constructor(project, store, { intervalMs = 1000, notifications = true, storageCheckpoint, maxBytes, maxSnapshots, retentionMode } = {}) {
     if (!Number.isInteger(intervalMs) || intervalMs < 20) throw new Error('intervalMs must be an integer >= 20');
     this.project = resolve(project);
     this.store = resolve(store);
     this.intervalMs = intervalMs;
     this.notifications = notifications;
-    this.requestedPolicy = Object.fromEntries(Object.entries({ maxBytes, maxSnapshots }).filter(([, value]) => value !== undefined));
+    this.requestedPolicy = Object.fromEntries(Object.entries({ maxBytes, maxSnapshots, mode: retentionMode }).filter(([, value]) => value !== undefined));
     policy(this.requestedPolicy);
     // Test instrumentation only; no CLI flag, environment trigger, or AI hook.
     this.storageCheckpoint = storageCheckpoint;
@@ -99,7 +69,7 @@ export class Recorder {
       try { config = JSON.parse(await fs.readFile(configPath, 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (config && (config.version !== 1 || config.project !== this.project)) throw new Error('Store belongs to a different project or format');
-      if (config && !config.retention && !Object.keys(this.requestedPolicy).length) throw new Error('Existing unbounded store requires explicit maxBytes or maxSnapshots before retention is enabled');
+      if (config && !config.retention && !Object.keys(this.requestedPolicy).length) throw new Error('Existing unbounded store requires explicit limits or retention mode before management is enabled');
       const retention = policy({ ...config?.retention, ...this.requestedPolicy });
       await atomic(configPath, JSON.stringify({ version: 1, project: this.project, retention }));
       await fs.mkdir(join(this.store, 'objects'), { recursive: true });
@@ -158,7 +128,7 @@ export class Recorder {
     const pending = this.queue.then(() => {
       const paths = this.fullScanPending ? undefined : [...this.dirty];
       this.fullScanPending = false;
-      this.dirty.clear();
+      if (paths) this.dirty.clear();
       return this.scan(paths ? 'notification' : 'reconciliation', paths);
     });
     this.queue = pending.catch(() => {});
@@ -188,6 +158,12 @@ export class Recorder {
     let newObjectBytes = 0;
     try {
       if (outer) await this.storage.maintain();
+      if (!this.inventory && this.storage.latestId) {
+        const previous = await readSnapshot(join(this.store, 'snapshots', `${this.storage.latestId}.json`));
+        this.inventory = { entries: previous.entries, skipped: previous.skipped };
+        this.fingerprint = hash(JSON.stringify(this.inventory));
+        this.status.lastSnapshot = previous.id;
+      }
       const targeted = paths && this.inventory;
       const refreshed = new Set();
       let lastYield = performance.now();
@@ -298,7 +274,7 @@ export class Recorder {
         if (inventoryBytes.length > 64 * 1024 * 1024) throw new Error('Inventory exceeds the 64 MiB manifest limit');
         const inventory = (await compress(inventoryBytes)).toString('base64');
         const encoded = JSON.stringify({ ...snapshot, entries: undefined, skipped: undefined, inventoryEncoding: 'gzip-base64', inventory });
-        this.storage.reserve(Buffer.byteLength(encoded));
+        this.storage.reserve(Buffer.byteLength(encoded), true);
         await atomic(join(this.store, 'snapshots', `${id}.json`), encoded, this.storageCheckpoint);
         this.storage.count++;
         this.status.lastSnapshot = id;
@@ -318,7 +294,7 @@ export class Recorder {
       if (full) this.retryAfter = Date.now() + 30000;
       this.status.retryAfter = full ? new Date(this.retryAfter).toISOString() : null;
       this.status.storage = this.storage?.status();
-      this.status.lastError = { at: new Date().toISOString(), message: message(error) };
+      this.status.lastError = { at: new Date().toISOString(), message: message(error), ...(full ? { resource: error.resource } : {}) };
       this.status.failedScanCount++;
       this.status.recentFailures = [...this.status.recentFailures, this.status.lastError].slice(-10);
       await atomic(join(this.store, 'status.json'), JSON.stringify(this.status)).catch(() => {});
@@ -339,9 +315,13 @@ export class Recorder {
   }
 }
 
-export async function restore(store, id, destination) {
+export async function restore(store, id, destination, { checkpoint } = {}) {
   if (!/^\d+-[a-f0-9-]+$/.test(id)) throw new Error('Invalid snapshot id');
   store = await fs.realpath(store);
+  return withStoreLock(store, () => restoreUnlocked(store, id, destination, checkpoint));
+}
+
+async function restoreUnlocked(store, id, destination, checkpoint) {
   const snapshot = await readSnapshot(join(store, 'snapshots', `${id}.json`));
   if (snapshot.version !== 1 || snapshot.id !== id || !Array.isArray(snapshot.entries)) throw new Error('Invalid snapshot');
   destination = join(await fs.realpath(dirname(resolve(destination))), resolve(destination).split(sep).at(-1));
@@ -353,6 +333,7 @@ export async function restore(store, id, destination) {
     seen.add(entry.path);
     if (hash(await fs.readFile(join(store, 'objects', entry.hash))) !== entry.hash) throw new Error('Corrupt recovery object');
   }
+  await checkpoint?.('verified');
   await fs.mkdir(destination, { mode: 0o700 });
   for (const entry of snapshot.entries) {
     const path = join(destination, entry.path);

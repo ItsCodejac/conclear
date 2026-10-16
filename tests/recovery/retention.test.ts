@@ -8,7 +8,7 @@ async function fixture(run) {
   const root = await fs.mkdtemp(join(tmpdir(), 'conclear-retention-'));
   const project = join(root, 'project'), store = join(root, 'store');
   await fs.mkdir(project);
-  const recorder = new Recorder(project, store, { notifications: false, intervalMs: 60000, maxSnapshots: 3 });
+  const recorder = new Recorder(project, store, { notifications: false, intervalMs: 60000, maxSnapshots: 3, retentionMode: 'expire' });
   try { await run({ root, project, store, recorder }); }
   finally { await recorder.stop(); await fs.rm(root, { recursive: true, force: true }); }
 }

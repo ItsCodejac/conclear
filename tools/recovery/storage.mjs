@@ -1,16 +1,21 @@
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { withStoreLock, readPins } from './control.mjs';
 
-export const DEFAULT_POLICY = { maxBytes: 512 * 1024 * 1024, maxSnapshots: 200 };
+export const DEFAULT_POLICY = { maxBytes: 512 * 1024 * 1024, maxSnapshots: 200, mode: 'preserve' };
 export function policy(options) {
   const result = { ...DEFAULT_POLICY, ...options };
   if (!Number.isSafeInteger(result.maxBytes) || result.maxBytes < 1024) throw new Error('maxBytes must be an integer >= 1024');
   if (!Number.isSafeInteger(result.maxSnapshots) || result.maxSnapshots < 2) throw new Error('maxSnapshots must be an integer >= 2');
+  if (!['preserve', 'expire'].includes(result.mode)) throw new Error('Retention mode must be preserve or expire');
   return result;
 }
 export class StorageFull extends Error {
-  constructor() { super('Recovery payload budget exhausted; existing retained snapshots are preserved'); this.code = 'RECOVERY_STORAGE_FULL'; }
+  constructor(resource = 'bytes') {
+    super(resource === 'snapshots' ? 'Recovery point limit reached; existing retained snapshots are preserved' : 'Recovery payload budget exhausted; existing retained snapshots are preserved');
+    this.code = 'RECOVERY_STORAGE_FULL'; this.resource = resource;
+  }
 }
 async function syncDirectory(path) {
   const handle = await fs.open(path, 'r');
@@ -30,7 +35,8 @@ export class RecoveryStorage {
     this.force = true;
   }
 
-  reserve(bytes) {
+  reserve(bytes, snapshot = false) {
+    if (snapshot && this.policy.mode === 'preserve' && this.count >= this.policy.maxSnapshots) { this.force = true; throw new StorageFull('snapshots'); }
     if (this.bytes + bytes > this.policy.maxBytes) { this.force = true; throw new StorageFull(); }
     // Reserve the entire temporary payload before writing, including on failure.
     // A later maintenance pass recomputes actual usage and removes orphan temps.
@@ -44,6 +50,10 @@ export class RecoveryStorage {
 
   async maintain() {
     if (!this.force && this.count <= this.policy.maxSnapshots && Date.now() - this.lastMaintenance < 30000) return;
+    return withStoreLock(this.store, () => this.collect());
+  }
+
+  async collect() {
     const objectsDir = join(this.store, 'objects'), snapshotsDir = join(this.store, 'snapshots');
     const files = [];
     for (const dir of [objectsDir, snapshotsDir]) {
@@ -74,13 +84,17 @@ export class RecoveryStorage {
       points.push({ ...file, refs });
     }
     points.sort((a, b) => Number(a.name.split('-')[0]) - Number(b.name.split('-')[0]) || a.name.localeCompare(b.name));
+    const pins = (await readPins(this.store)).pins;
+    for (const pin of pins) if (!points.some(point => point.name === `${pin.snapshotId}.json`)) throw new Error('Pinned snapshot is missing; cleanup stopped');
+    const pinned = new Set(pins.map(pin => `${pin.snapshotId}.json`));
     const retained = new Set(points);
     const refCounts = new Map();
     for (const point of points) for (const ref of point.refs) refCounts.set(ref, (refCounts.get(ref) ?? 0) + 1);
     let retainedBytes = points.reduce((sum, point) => sum + point.bytes, 0) + [...refCounts.keys()].reduce((sum, ref) => sum + objects.get(ref).bytes, 0);
     // Leave headroom for the next capture without deleting baseline or newest.
-    for (const candidate of points.slice(1, -1)) {
+    for (const candidate of this.policy.mode === 'expire' ? points.slice(1, -1) : []) {
       if (retained.size <= this.policy.maxSnapshots && retainedBytes <= this.policy.maxBytes * 0.8) break;
+      if (pinned.has(candidate.name)) continue;
       retained.delete(candidate);
       retainedBytes -= candidate.bytes;
       for (const ref of candidate.refs) {
@@ -107,13 +121,16 @@ export class RecoveryStorage {
     await this.checkpoint?.('retention-objects-synced', objectsDir);
     this.bytes = retainedBytes;
     this.count = retained.size;
+    this.latestId = points.at(-1)?.name.slice(0, -5);
     this.force = false;
     this.lastMaintenance = Date.now();
     this.result = { at: new Date().toISOString(), payloadBytes: this.bytes, snapshots: this.count,
       removedSnapshots: removedPoints.length, removedObjects: removedObjects.length,
-      protectedSnapshots: [points[0]?.name, points.at(-1)?.name].filter(Boolean).map(name => name.slice(0, -5)),
+      protectedSnapshots: [...new Set([points[0]?.name, points.at(-1)?.name, ...pinned].filter(Boolean))].map(name => name.slice(0, -5)),
+      pinnedSnapshots: pins.map(pin => pin.snapshotId),
       ...this.policy };
     if (this.bytes > this.policy.maxBytes) { this.force = true; throw new StorageFull(); }
+    if (this.count > this.policy.maxSnapshots) { this.force = true; throw new StorageFull('snapshots'); }
   }
 
   status() { return { ...this.result, snapshots: this.count, reservedPayloadBytes: this.bytes, ...this.policy }; }

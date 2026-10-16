@@ -56,7 +56,7 @@ it.each(['retention-manifests-synced', 'retention-objects-synced'])('retained sn
   const project = join(root, 'project'), store = join(root, 'store');
   await fs.mkdir(project);
   await fs.writeFile(join(project, 'code.ts'), 'version-0');
-  const seed = new Recorder(project, store, { notifications: false, intervalMs: 60000, maxSnapshots: 10 });
+  const seed = new Recorder(project, store, { notifications: false, intervalMs: 60000, maxSnapshots: 10, retentionMode: 'expire' });
   let child, restarted;
   try {
     await seed.start();

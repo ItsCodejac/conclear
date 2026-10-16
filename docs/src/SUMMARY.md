@@ -39,3 +39,4 @@
 - [Keyboard Shortcuts](keyboard-shortcuts.md)
 - [Development and releases](development.md)
   - [Recovery recorder prototype](recovery-prototype.md)
+  - [Recovery meeting demo](meeting-demo.md)
