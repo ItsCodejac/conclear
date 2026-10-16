@@ -63,7 +63,7 @@ The September large-fixture benchmarks established both improvements and substan
 
 ## Release status
 
-Version 0.5.0 is prepared locally with recovery runtime files in the npm archive. The installed-package macOS check exercises a temporary real launchd service, then removes that service while preserving fixture evidence. The GitHub source and npm registry publication are separate release steps; check their actual status before telling an audience to install the new version from npm.
+**ConClear 0.5.0 is published on npm as `latest`.** Install with `npm install -g conclear@latest` (Node.js 22.13 or later), then run `conclear` for the web UI or `conclear recovery --help` for independent recovery. The registry archive integrity matches the exact package exercised by the macOS service check. Both macOS and Linux Node 22 CI builds and all 158 tests passed. The installed-package macOS check exercises a temporary actual launchd service and removes it afterward while preserving fixture evidence.
 
 ## Presentation text
 

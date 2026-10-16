@@ -1,0 +1,27 @@
+{
+  "at": "2026-10-16T13:09:22.192Z",
+  "version": "0.5.0",
+  "registry": "https://registry.npmjs.org/",
+  "tag": "latest",
+  "tarball": "https://registry.npmjs.org/conclear/-/conclear-0.5.0.tgz",
+  "integrity": "sha512-DJSRRU8Ib9CLOcCtWma0OlJual0I740tIeqhj/M9MsVQfWDNgyDaByylJkiyuMwFrzH9VbLQZ7+2WJEJ+t3MMA==",
+  "sourceCommit": "d65f29659d6c27f05a4f0e63a879c1f7f5c76155",
+  "checks": [
+    "npm accepted public publication",
+    "Registry serves version 0.5.0 and latest points to 0.5.0",
+    "Registry integrity matches the exact tested archive",
+    "Clean npm install of conclear@0.5.0 completed in a temporary prefix",
+    "Installed CLI recovery status returned valid JSON",
+    "Installed MCP server listed eight tools and conclear_recovery returned valid health"
+  ],
+  "ci": {
+    "url": "https://github.com/ItsCodejac/conclear/actions/runs/38905028261",
+    "conclusion": "success",
+    "platforms": [
+      "ubuntu-latest",
+      "macos-latest"
+    ],
+    "node": "22",
+    "tests": 158
+  }
+}
